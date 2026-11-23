@@ -99,6 +99,12 @@ For each ticket:
      outside the config module; the engine and pure modules import nothing from `deepspace`;
      nothing reads secrets or local settings files; no test or script can reach a paid service.
    - Check each acceptance criterion and each required test in the ticket actually exists.
+   - **Mutation check** (added by Dustin, 2026-11-23): pick at least three rules the ticket
+     introduces, break each one in the code in turn (flip a comparison, remove an ownership
+     check, change a limit), and run the relevant tests. Each break must turn a test red.
+     Restore the code after each. A rule that can be broken with the tests still green sends
+     the ticket back with that rule named. Also check the completion note's Red/green log
+     (tickets README, rule 12) is present and plausible.
    - For a page ticket, open every screenshot under `specs/bumpcheck/evidence/<n>/` and look
      at it. A broken, blank or scaffold-styled page fails the ticket.
 3. **If it fails,** message the same worker with the specific failures. Start a fresh one,

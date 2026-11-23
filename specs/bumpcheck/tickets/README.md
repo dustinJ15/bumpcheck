@@ -47,6 +47,17 @@ These apply to every ticket and are not repeated in full in each file.
     ask; do not guess or work around it. If you are stuck on one problem after a couple of
     attempts, say what you tried. If you find a problem outside your ticket, report it.
 
+12. **Test first, and show it.** (Added by Dustin, 2026-11-23, from ticket 03 on.) For each
+    behaviour in a ticket's "Tests required" list: write the test, run it, and see it fail for
+    the right reason before writing the code that makes it pass. A test that has never been
+    seen red proves nothing. Never weaken, skip or delete a test to get green; if a test is
+    wrong, say so in the report. Tests exercise behaviour through a module's public interface.
+    The completion note carries a **Red/green log**: one line per required test giving the
+    test's name and the failure message it produced before the implementation existed. If a
+    test could not be written first (for example a screenshot-only check), say which and why.
+    The supervisor checks this by mutation: it breaks a rule in the code and expects a test to
+    go red. A rule that can be broken with the gate still green sends the ticket back.
+
 ## Done means (every ticket)
 
 A ticket is done when its acceptance criteria hold **and** its completion note is filled in:
@@ -60,4 +71,5 @@ A ticket is done when its acceptance criteria hold **and** its completion note i
   fake-services setting from ticket 01. If a signed-in page cannot be reached by that command,
   say so in the note and attach the browser test's own capture of that page instead; do not
   skip the screenshot.
+- Include the **Red/green log** described in rule 12.
 - List anything left undone or found unverified. Do not report a step as done if it was skipped.
