@@ -310,7 +310,10 @@ scheduled task, and pages.
   version) and target major.minor. Holds the
   status (ready, no changelog, failed), the label (breaking, safe, unclear), summary, the list
   of changes (title, what changed, API names, what to do), the source link, whether the input
-  was cut, and the exact versions judged. Readable by every role including signed-out visitors,
+  was cut, and the exact versions judged. A verdict for a same-major (minor or patch) upgrade
+  applies to a dependency only when the versions it judged start at or below the dependency's
+  current version; otherwise the dependency stays "not read" and its own check reads the
+  wider range and replaces the stored verdict (added 2026-11-23, ticket 03). Readable by every role including signed-out visitors,
   since the content is public package information. Written only by server code.
 - **Alerts.** The send log: project, time, verdict keys included, kind (alert or test), outcome
   and failure reason. Owner-scoped by the user's id. Written only by server code.

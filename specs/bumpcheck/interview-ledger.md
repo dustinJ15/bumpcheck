@@ -71,6 +71,23 @@ recs for each and every question", then confirmed the ledger stands.
     checkpoint; then impact analysis in two tickets.
 31. **Repo:** a README; no licence file.
 
+## B2. Decisions made by the supervisor during the build
+
+Dustin, 2026-11-23: "this is a ralph loop. use your discretion to make these fixes and dont
+stop and ask for my input again".
+
+- **Minor and patch verdicts (ticket 03):** the verdict key is unchanged, but a cached verdict
+  for a same-major upgrade applies only to a project whose current version is at or above the
+  version the verdict was judged from. Otherwise a project on 4.2 would be shown "safe" from a
+  verdict that only read 4.17.2 to 4.17.3.
+- **Failed on-demand check (ticket 03):** leaves the project "done" with a "last check failed"
+  notice instead of marking the whole project failed.
+- **Add-project attempts (ticket 04):** capped at 20 per user per day, owner exempt, because
+  each attempt costs GitHub calls even when refused.
+- **Refused Releases requests (ticket 04):** store no shared verdict; the next scan tries again.
+- **Test first (from ticket 03):** tickets README rule 12 and the supervisor's mutation check,
+  at Dustin's request.
+
 ## C. Settled by exploration
 
 - Fake services in browser tests are switched on by a setting only the test runner's local
