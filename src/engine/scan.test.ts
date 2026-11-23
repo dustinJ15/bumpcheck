@@ -491,3 +491,30 @@ describe('alert hook', () => {
     expect(onDemand.alerts).toEqual([])
   })
 })
+
+describe('dependency names that are also Object property names', () => {
+  it('looks up and triages packages called "constructor" and "toString" like any other', async () => {
+    const w = world({
+      dependencies: { constructor: '^1.0.0', toString: '^1.0.0', express: '^4.0.0' },
+      packages: [pkg('constructor', '1.2.0'), pkg('toString', '2.0.0'), pkg('express', '4.0.0')],
+    })
+    const end = await runScan(w.services, startScan(PROJECT))
+
+    expect(end.outcome).toBe('succeeded')
+    expect(w.registry.calls).toEqual(['constructor', 'toString', 'express'])
+    const deps = project(w.store).dependencies
+    expect(dep(deps, 'constructor')).toMatchObject({ triage: 'minor', target: '1.2.0' })
+    expect(dep(deps, 'toString')).toMatchObject({ triage: 'major', target: '2.0.0' })
+  })
+
+  it('ignores a "__proto__" entry, which cannot be a package', async () => {
+    const w = world({
+      packageJson: '{"dependencies":{"__proto__":"^1.0.0","express":"^4.0.0"}}',
+      packages: [pkg('express', '4.0.0')],
+    })
+    const end = await runScan(w.services, startScan(PROJECT), { maxSteps: 50 })
+
+    expect(end.outcome).toBe('succeeded')
+    expect(project(w.store).dependencies.map((d) => d.name)).toEqual(['express'])
+  })
+})

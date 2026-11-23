@@ -32,7 +32,6 @@ import { sliceChangelog, sliceReleases, type SlicedChangelog } from '../core/cha
 import { isDailyCeilingReached, mayJudgeAnother, utcDay } from '../core/limits'
 import type { DependencyResult, ScanReport, SourceRepo, Verdict } from '../core/model'
 import {
-  listDependencies,
   needsRegistryLookup,
   pickTarget,
   triageDependency,
@@ -41,6 +40,7 @@ import {
 } from '../core/triage'
 import { verdictKey } from '../core/verdict'
 import type { Clock, Judge, JudgeResult, PackageRegistry, RecordStore, SourceHost } from '../services/types'
+import { readRepoManifest } from './manifest'
 
 /** Called after a successful scan's results are written. Ticket 06 supplies the real one. */
 export type AlertHook = (input: { projectId: string }) => Promise<void>
@@ -160,38 +160,18 @@ async function readManifest(services: ScanServices, state: ScanState): Promise<S
     scanProgress: { step: 'read-manifest', message: 'Reading package.json', done: 0, total: 1 },
   })
 
-  const repo = { owner: project.repoOwner, repo: project.repoName }
-  const info = await services.sourceHost.getRepo(repo)
-  if (info === null) return fail(services, state, 'The repository was not found or is not public.')
+  const manifest = await readRepoManifest(services.sourceHost, { owner: project.repoOwner, repo: project.repoName })
+  if (!manifest.ok) return fail(services, state, manifest.message)
 
-  const text = await services.sourceHost.getFile(repo, 'package.json', info.defaultBranch)
-  if (text === null) return fail(services, state, 'The repository has no package.json at its root.')
-
-  let manifest: unknown
-  try {
-    manifest = JSON.parse(text)
-  } catch {
-    return fail(services, state, 'package.json is not valid JSON.')
-  }
-
-  const declared = listDependencies(manifest)
-  if (declared.length > LIMITS.dependenciesPerProject) {
-    return fail(
-      services,
-      state,
-      `package.json declares ${declared.length} dependencies; bumpcheck reads at most ${LIMITS.dependenciesPerProject}.`,
-    )
-  }
-
-  state.defaultBranch = info.defaultBranch
-  state.declared = declared
+  state.defaultBranch = manifest.defaultBranch
+  state.declared = manifest.declared
   state.step = 'look-up'
   return state
 }
 
 async function lookUp(services: ScanServices, state: ScanState): Promise<ScanState> {
   const toLookUp = state.declared.filter(needsRegistryLookup)
-  const batch = toLookUp.filter((dep) => !(dep.name in state.published)).slice(0, SCAN_PACING.registryLookupsPerStep)
+  const batch = toLookUp.filter((dep) => !Object.hasOwn(state.published, dep.name)).slice(0, SCAN_PACING.registryLookupsPerStep)
 
   for (const dep of batch) {
     const info = await services.registry.getPackage(dep.name)
@@ -207,14 +187,14 @@ async function lookUp(services: ScanServices, state: ScanState): Promise<ScanSta
     }
   }
 
-  const done = toLookUp.filter((dep) => dep.name in state.published).length
+  const done = toLookUp.filter((dep) => Object.hasOwn(state.published, dep.name)).length
   await progress(services, state, 'look-up', `Checking versions (${done} of ${toLookUp.length})`, done, toLookUp.length)
   if (done === toLookUp.length) state.step = 'attach-cached'
   return state
 }
 
 async function attachCached(services: ScanServices, state: ScanState): Promise<ScanState> {
-  state.dependencies = state.declared.map((dep) => triageDependency(dep, state.published[dep.name] ?? null))
+  state.dependencies = state.declared.map((dep) => triageDependency(dep, ownValue(state.published, dep.name)))
 
   const needVerdict: DependencyResult[] = []
   for (const dep of state.dependencies) {
@@ -251,7 +231,7 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
   const from = dep.current as string
   const to = dep.target as string
   const key = verdictKey(name, from, to)
-  const source = state.sources[name] ?? null
+  const source = ownValue(state.sources, name)
 
   await progress(
     services,
@@ -413,6 +393,14 @@ async function progress(
   total: number,
 ): Promise<void> {
   await services.store.updateProject(state.projectId, { scanProgress: { step, message, done, total } })
+}
+
+/**
+ * Reads a by-name map without inherited properties: a package can be called
+ * "constructor" or "toString", and those must not find Object's own.
+ */
+function ownValue<T>(map: Record<string, T | null>, name: string): T | null {
+  return Object.hasOwn(map, name) ? map[name] : null
 }
 
 function findDependency(state: ScanState, name: string): DependencyResult {

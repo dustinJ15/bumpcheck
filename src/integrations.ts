@@ -24,7 +24,22 @@ export const integrations: Record<
   string,
   { billing: 'developer' | 'user'; anonymous?: boolean }
 > = {
+  // bumpcheck uses two integrations, both paid by the app owner and both
+  // called by server code only. Neither sets `anonymous`, so a signed-out
+  // visitor can call nothing.
+  github: { billing: 'developer' },
+  email: { billing: 'developer' },
   google: { billing: 'user' },
   composio: { billing: 'user' },
-  // openai: { billing: 'developer', anonymous: true },
 }
+
+/**
+ * Integrations a signed-in user's browser may call through the
+ * `/api/integrations/:name/:endpoint` proxy (src/server/http-routes.ts).
+ *
+ * None. The proxy bills the app owner for every owner-billed integration,
+ * including ones not listed above, so leaving it open would let any signed-in
+ * user spend the owner's credits from the browser console (story 58). Server
+ * actions and jobs call integrations directly and are not affected.
+ */
+export const browserCallableIntegrations: readonly string[] = []

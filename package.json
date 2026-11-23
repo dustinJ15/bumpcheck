@@ -27,7 +27,9 @@
     "screenshot": "deepspace test screenshot",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
-    "gate": "npm run lint && npm run type-check && npm run test:unit && npm run test:smoke && npm run test:api"
+    "test:signed-in": "deepspace test run tests/projects.spec.ts",
+    "gate": "npm run lint && npm run type-check && npm run test:unit && npm run test:smoke && npm run test:api && npm run test:signed-in",
+    "live-check": "playwright test --config tests/live/playwright.live.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "~1.6.0",

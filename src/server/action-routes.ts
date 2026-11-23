@@ -69,6 +69,16 @@ export function registerActionRoutes(app: Hono<AppContext>, resolveAuth: Resolve
   })
 }
 
+/**
+ * The same tools for server code that runs with no caller: the scan job
+ * (src/jobs.ts). Records are written as the app owner, and every integration
+ * call is paid for with the owner's token, which is the only way a job can
+ * pay: it has no user to bill (spec, "Platform facts").
+ */
+export function ownerActionTools(env: Env): ActionTools {
+  return createActionTools(env, env.OWNER_USER_ID, env.APP_OWNER_JWT)
+}
+
 function createActionTools(env: Env, userId: string, callerJwt: string): ActionTools {
   const stub = env.RECORD_ROOMS.get(env.RECORD_ROOMS.idFromName(`app:${env.DEEPSPACE_APP_ID}`))
 

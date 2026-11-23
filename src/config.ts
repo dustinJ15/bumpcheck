@@ -77,4 +77,25 @@ export const IMPACT = {
 export const SCAN_PACING = {
   /** Registry lookups the engine makes in one step before checkpointing. */
   registryLookupsPerStep: 25,
+  /**
+   * Outbound calls (registry, GitHub, judge) one job tick may make. Once a
+   * tick has made this many, the job saves its state and continues on the
+   * next tick. The platform documents no subrequest ceiling, so this stays
+   * conservative.
+   */
+  outboundCallsPerTick: 30,
+  /** How long one outbound call may take before it is abandoned. */
+  outboundTimeoutMs: 20_000,
+  /** How long the one judge call for a verdict may take. */
+  judgeTimeoutMs: 60_000,
+  /** Failed ticks a scan may have before it is marked failed: the second failure ends it (one retry). */
+  failedTicksPerScan: 2,
+  /** How long a scan waits before retrying after a failed tick. */
+  retryDelayMs: 5_000,
+  /**
+   * How many times the job room may run the handler for one scan: every
+   * tick and every restart after an interruption counts as one run. Far more
+   * than a 150-dependency scan needs; it only stops a scan that never ends.
+   */
+  jobRunsPerScan: 60,
 } as const

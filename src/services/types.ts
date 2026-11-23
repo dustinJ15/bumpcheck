@@ -3,7 +3,7 @@
  *
  * The scan engine talks only to these. Production passes real
  * implementations (tickets 02 and 06); tests and the local test server pass
- * the fakes in ./fakes.ts. This file is the one seam the spec allows
+ * the fakes in ./fakes.ts. Which set the worker uses is decided in ./wire.ts. This file is the one seam the spec allows
  * ("Testing Decisions"), so it imports nothing from `deepspace`.
  */
 
@@ -17,7 +17,11 @@ import type { VerdictPromptInput, VerdictResponse } from '../core/verdict'
 export interface RegistryPackage {
   /** The `latest` dist-tag. */
   latest: string | null
-  /** Every published version. */
+  /**
+   * Published versions. Triage reads this only when `latest` is a
+   * prerelease (to find the highest stable version), so an implementation
+   * may list just `latest` when `latest` is stable.
+   */
   versions: string[]
   /** Where the source lives on GitHub, if the package says. */
   source: SourceRepo | null

@@ -50,6 +50,9 @@ export function listDependencies(manifest: unknown): DeclaredDependency[] {
     if (!isObject(block)) continue
     for (const [name, declared] of Object.entries(block)) {
       if (typeof declared !== 'string' || seen.has(name)) continue
+      // Not a possible package name, and as a key it would replace the
+      // prototype of the by-name maps the scan keeps.
+      if (name === '__proto__') continue
       seen.add(name)
       result.push({ name, group, declared: declared.trim() })
     }

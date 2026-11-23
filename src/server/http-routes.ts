@@ -29,7 +29,7 @@ import {
   nativeAuthToken,
 } from 'deepspace/worker'
 import type { ExpoAuthBridgeOptions, JwtVerifierConfig, VerifyResult } from 'deepspace/worker'
-import { integrations } from '../integrations.js'
+import { browserCallableIntegrations, integrations } from '../integrations.js'
 import type { AppContext, Env } from '../../worker.js'
 
 function jwtConfig(env: Env): JwtVerifierConfig {
@@ -237,6 +237,10 @@ export function registerAuthAndIntegrationRoutes(app: Hono<AppContext>): void {
     // identifiers only, and own keys only for the config.
     const target = integrationPath(integrationName, c.req.param('endpoint'))
     if (!target) return c.json({ error: 'Unknown integration' }, 404)
+    // bumpcheck: only server code starts paid work. See src/integrations.ts.
+    if (!browserCallableIntegrations.includes(integrationName)) {
+      return c.json({ error: 'This integration is not callable from the browser' }, 403)
+    }
     const config = lookupOwn(integrations, integrationName)
     const billingMode = config?.billing ?? 'developer'
 

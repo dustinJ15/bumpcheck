@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import wranglerToml from '../../wrangler.toml?raw'
 import viteConfigSource from '../../vite.config.ts?raw'
+import packageJsonSource from '../../package.json?raw'
+import testConfigSource from '../../tests/playwright.config.ts?raw'
+import liveConfigSource from '../../tests/live/playwright.live.config.ts?raw'
 import { FAKE_SERVICES_SETTING, fakeServicesWorkerVars, servicesMode } from './mode'
 
 describe('servicesMode: one setting decides real or fake', () => {
@@ -45,5 +48,28 @@ describe('a production build has fake services off', () => {
     })
     expect(fakeServicesWorkerVars('serve', {})).toEqual({})
     expect(fakeServicesWorkerVars('serve', { BUMPCHECK_FAKE_SERVICES: 'false' })).toEqual({})
+  })
+})
+
+describe('the gate runs against fakes, and the paid live check stays out of it', () => {
+  const scripts = (JSON.parse(packageJsonSource) as { scripts: Record<string, string> }).scripts
+
+  it('the test server config turns the fake-services setting on', () => {
+    expect(testConfigSource).toContain("env: { BUMPCHECK_FAKE_SERVICES: 'true' }")
+  })
+
+  it('the gate includes the signed-in browser tests and never the live check', () => {
+    expect(scripts.gate).toContain('npm run test:signed-in')
+    expect(scripts.gate).not.toContain('live')
+    for (const [name, command] of Object.entries(scripts)) {
+      if (name !== 'live-check') expect(command).not.toContain('live-check')
+    }
+  })
+
+  it('the live check is the only config without the setting, and its file is not a *.spec.ts the gate could match', () => {
+    expect(scripts['live-check']).toContain('tests/live/playwright.live.config.ts')
+    expect(liveConfigSource).not.toContain(`${FAKE_SERVICES_SETTING}:`)
+    expect(liveConfigSource).toContain("testMatch: 'live-check.live.ts'")
+    expect(testConfigSource).toContain("testMatch: '**/*.spec.ts'")
   })
 })

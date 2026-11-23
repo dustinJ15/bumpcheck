@@ -65,16 +65,27 @@ export class AppCronRoom extends CronRoom<Env> {
   }
 }
 
-/** Runs durable background work defined in src/jobs.ts. */
+/**
+ * Runs durable background work defined in src/jobs.ts.
+ *
+ * Locked down (decision 15): only the app owner's role (admin) may enqueue,
+ * cancel or retry a job from a client, and only that role may read the
+ * queue. The platform's default would let every signed-in member enqueue
+ * jobs from the browser console, each one paid work on the owner's account,
+ * and read every job's payload. Both checks are stated here, not left to a
+ * default. Signed-out visitors and members are refused.
+ *
+ * Scans are enqueued by server code instead (src/server/scan-queue.ts), after
+ * a server action has checked the caller and the limits. That path uses the
+ * worker's own binding and does not pass through these checks.
+ */
 export class AppJobRoom extends JobRoom<Env> {
   constructor(state: DurableObjectState, env: Env) {
-    super(state, env, {
-      authorizeWrite: async (user) => {
-        if (user.userId.startsWith('anon-')) return false
-        const role = await resolveAppRole(env, user.userId)
-        return role === 'member' || role === 'admin'
-      },
-    })
+    const ownerRoleOnly = async (user: { userId: string }): Promise<boolean> => {
+      if (user.userId.startsWith('anon-')) return false
+      return (await resolveAppRole(env, user.userId)) === 'admin'
+    }
+    super(state, env, { authorizeWrite: ownerRoleOnly, authorizeRead: ownerRoleOnly })
   }
 
   protected async onJob(job: Job, context: JobContext): Promise<unknown> {
