@@ -624,3 +624,16 @@ Running 14 tests using 1 worker
 
   14 passed (1.2m)
 ```
+
+**Supervisor note (2026-11-23).** Verified and accepted. Gate green on my own run (350 unit and
+engine, 6 smoke, 2 API, 24 signed-in). Mutation check: I broke 13 rules one at a time and a
+test went red for each: project limit, daily ceiling and per-scan cap off by one; owner
+exemption removed; on-demand scans alerting; verdict cover flipped; 0.x key fix removed; AI
+call not counted; fake setting forwarded on a build; fake as the default; job room open to
+members; integration proxy open; ownership check removed. Screenshots looked at, including
+the 380 px one.
+
+Carried forward: the 1,500-token output cap may cut a large verdict's JSON (check at the live
+check); a record write failing after a successful judge call would pay for that verdict
+twice on the retried step; two simultaneous add requests from a user one below the limit
+are both refused.

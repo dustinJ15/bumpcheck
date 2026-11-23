@@ -57,6 +57,11 @@ discretion" instruction of 2026-11-23):
   verdict: show the dependency as not read this time, and let the next scan try again. It
   must still cost no AI call.
 
+- **From ticket 03:** check and retry are refused unless the project's scan status is "done",
+  so the stalled-scan handling above is what unblocks a stuck project; cover that in a test.
+  If a record write fails after a successful judge call, the retried step must not pay for
+  the same verdict again (look for the stored verdict before asking the judge).
+
 ## Tests required
 
 - Unit: due, idle and cooldown at their boundaries (extend ticket 01's tests if gaps remain);
