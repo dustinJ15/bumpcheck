@@ -118,6 +118,11 @@ export interface Env extends DOBindings<typeof __DO_MANIFEST__> {
    * an authenticated app owner/admin. deepspace dev/test set it locally.
    */
   ALLOW_DEBUG_ROUTES?: string
+  /**
+   * bumpcheck: "true" selects fake services (src/services/mode.ts). Present
+   * only on the local test server; a production build never has it.
+   */
+  BUMPCHECK_FAKE_SERVICES?: string
 }
 
 export type AppContext = { Bindings: Env }

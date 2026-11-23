@@ -1,0 +1,80 @@
+/**
+ * Every limit and cap bumpcheck applies, in one place.
+ *
+ * The whole app runs on one DeepSpace account with a fixed budget, so these
+ * numbers are the budget. No limit may be written anywhere else: import it
+ * from here. The values match the spec's "Limits and caps" table.
+ *
+ * Time values are in milliseconds so they compare directly with `Date.now()`.
+ */
+
+const MINUTE_MS = 60 * 1000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+
+export const LIMITS = {
+  /** Projects one user may have. The app owner is exempt. */
+  projectsPerUser: 3,
+  /** Dependencies (runtime + dev) a project's package.json may declare. */
+  dependenciesPerProject: 150,
+  /** New AI verdicts one scan may ask for. Runtime dependencies go first. */
+  newVerdictsPerScan: 15,
+  /** AI calls per UTC day, across the whole app. Nobody is exempt. */
+  aiCallsPerDay: 150,
+  /** How long "scan now" is unavailable after a scan was requested. */
+  scanNowCooldownMs: 10 * MINUTE_MS,
+  /** How long after a scan a project is due for its next daily scan. */
+  rescanIntervalMs: 24 * HOUR_MS,
+  /** A project not opened by its owner for this long stops being scanned. */
+  idlePauseMs: 7 * DAY_MS,
+  /** Test emails one user may send per UTC day. The app owner is exempt. */
+  testEmailsPerUserPerDay: 3,
+  /** Alert emails one project may send per UTC day. */
+  alertEmailsPerProjectPerDay: 1,
+} as const
+
+export const JUDGE = {
+  /** The model that writes verdicts. */
+  model: 'claude-haiku-5-5',
+  /** Output cap per verdict, in tokens. */
+  maxOutputTokens: 1500,
+  /** Changelog text longer than this is cut, and the verdict says so. */
+  changelogInputCapChars: 30_000,
+  /** Attempts per verdict: one try and one retry, then the verdict is "failed". */
+  attemptsPerVerdict: 2,
+} as const
+
+/**
+ * Size limits on a verdict the judge returns. A response over any of these
+ * is rejected (and retried), so one runaway answer cannot bloat the shared
+ * cache that every project reads.
+ */
+export const VERDICT_SHAPE = {
+  summaryChars: 1000,
+  changesPerVerdict: 30,
+  titleChars: 200,
+  /** For "whatChanged" and "whatToDo". */
+  noteChars: 2000,
+  apiNamesPerChange: 50,
+  apiNameChars: 200,
+} as const
+
+export const IMPACT = {
+  /** Source file types the stretch impact analysis reads. */
+  fileExtensions: ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'],
+  /** Folders the impact analysis never reads (dependency folders, build output). */
+  skippedFolders: ['node_modules', 'dist', 'build', 'out', '.next', 'coverage', 'vendor'],
+  /** Files larger than this are skipped. */
+  maxFileBytes: 200 * 1024,
+  /** Files read per repo before the result is marked partial. */
+  filesPerRepo: 400,
+} as const
+
+/**
+ * Pacing inside one scan. Not a budget limit, but still a number the engine
+ * would otherwise hard-code, so it lives here too.
+ */
+export const SCAN_PACING = {
+  /** Registry lookups the engine makes in one step before checkpointing. */
+  registryLookupsPerStep: 25,
+} as const

@@ -1,0 +1,432 @@
+/**
+ * The scan engine: one project, one scan, one step at a time.
+ *
+ * A scan is a list of steps. `runScanStep` runs exactly one and returns the
+ * next state. The state is plain JSON, so a job can save it between steps
+ * (`ctx.continue(state)`) and pick up on its next tick where it left off.
+ *
+ *   read-manifest  read the repo's package.json
+ *   look-up        ask the registry for each dependency's versions, a batch per step
+ *   attach-cached  triage, then attach verdicts already in the shared cache
+ *   judge          one major upgrade per step: changelog -> slice -> judge,
+ *                  within the per-scan cap and the daily AI ceiling, runtime first
+ *   write          write the results to the project row
+ *   alert          hand off to the alert hook (a no-op until ticket 06)
+ *   done
+ *
+ * Every outside call goes through the injected services, so this file has no
+ * platform imports and runs unchanged in tests.
+ *
+ * Failures:
+ *   - A problem with the repo itself (not found, no package.json, invalid
+ *     JSON, too many dependencies) ends the scan as "failed" with a reason.
+ *     Retrying would not help, so the engine records it and stops.
+ *   - Anything unexpected (a service throws) propagates. The job decides
+ *     whether to retry; when it gives up it calls `markScanFailed`.
+ *   Either way the project's dependency list, and so its verdicts, is left
+ *   as the last good scan wrote it (story 27).
+ */
+
+import { JUDGE, LIMITS, SCAN_PACING } from '../config'
+import { sliceChangelog, sliceReleases, type SlicedChangelog } from '../core/changelog'
+import { isDailyCeilingReached, mayJudgeAnother, utcDay } from '../core/limits'
+import type { DependencyResult, ScanReport, SourceRepo, Verdict } from '../core/model'
+import {
+  listDependencies,
+  needsRegistryLookup,
+  pickTarget,
+  triageDependency,
+  type DeclaredDependency,
+  type PublishedVersions,
+} from '../core/triage'
+import { verdictKey } from '../core/verdict'
+import type { Clock, Judge, JudgeResult, PackageRegistry, RecordStore, SourceHost } from '../services/types'
+
+/** Called after a successful scan's results are written. Ticket 06 supplies the real one. */
+export type AlertHook = (input: { projectId: string }) => Promise<void>
+
+export const noAlerts: AlertHook = async () => {}
+
+export interface ScanServices {
+  registry: PackageRegistry
+  sourceHost: SourceHost
+  judge: Judge
+  store: RecordStore
+  clock: Clock
+  alertHook: AlertHook
+}
+
+export type ScanStep = 'read-manifest' | 'look-up' | 'attach-cached' | 'judge' | 'write' | 'alert' | 'done'
+
+/** Everything a scan needs to continue. Plain JSON: safe to save between job ticks. */
+export interface ScanState {
+  projectId: string
+  /** True for a "check this one" read; on-demand scans never alert. */
+  onDemand: boolean
+  step: ScanStep
+  /** How the scan ended, once `step` is "done". */
+  outcome: 'succeeded' | 'failed' | null
+  failureReason: string | null
+  defaultBranch: string | null
+  /** From package.json. */
+  declared: DeclaredDependency[]
+  /** Registry answers so far. Null means unpublished. */
+  published: Record<string, PublishedVersions | null>
+  sources: Record<string, SourceRepo | null>
+  /** Filled by triage. */
+  dependencies: DependencyResult[]
+  /** Package names still waiting for a verdict, in judging order. */
+  judgeQueue: string[]
+  judgeTotal: number
+  report: ScanReport
+}
+
+/** The state a new scan starts from. */
+export function startScan(projectId: string, options: { onDemand?: boolean } = {}): ScanState {
+  return {
+    projectId,
+    onDemand: options.onDemand ?? false,
+    step: 'read-manifest',
+    outcome: null,
+    failureReason: null,
+    defaultBranch: null,
+    declared: [],
+    published: {},
+    sources: {},
+    dependencies: [],
+    judgeQueue: [],
+    judgeTotal: 0,
+    report: { judged: 0, deferredByScanCap: 0, deferredByDailyCeiling: 0 },
+  }
+}
+
+/** Runs one step and returns the next state. The input state is not changed. */
+export async function runScanStep(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const next = structuredClone(state)
+  switch (next.step) {
+    case 'read-manifest':
+      return readManifest(services, next)
+    case 'look-up':
+      return lookUp(services, next)
+    case 'attach-cached':
+      return attachCached(services, next)
+    case 'judge':
+      return judgeNext(services, next)
+    case 'write':
+      return writeResults(services, next)
+    case 'alert':
+      return alert(services, next)
+    case 'done':
+      return next
+  }
+}
+
+/** Runs steps until the scan is done (or `maxSteps` have run). Handy for tests and short scans. */
+export async function runScan(
+  services: ScanServices,
+  state: ScanState,
+  options: { maxSteps?: number } = {},
+): Promise<ScanState> {
+  let current = state
+  let steps = 0
+  while (current.step !== 'done' && steps < (options.maxSteps ?? Infinity)) {
+    current = await runScanStep(services, current)
+    steps++
+  }
+  return current
+}
+
+/**
+ * Records a failed scan on the project: status and reason only. The
+ * dependency list, and the verdicts it points at, stay as they were.
+ */
+export async function markScanFailed(
+  services: Pick<ScanServices, 'store'>,
+  projectId: string,
+  reason: string,
+): Promise<void> {
+  await services.store.updateProject(projectId, { scanStatus: 'failed', scanError: reason, scanProgress: null })
+}
+
+// ------------------------------------------------------------------ steps
+
+async function readManifest(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const project = await services.store.getProject(state.projectId)
+  if (project === null) return finish(state, 'failed', 'The project no longer exists.')
+
+  await services.store.updateProject(state.projectId, {
+    scanStatus: 'scanning',
+    scanError: null,
+    scanProgress: { step: 'read-manifest', message: 'Reading package.json', done: 0, total: 1 },
+  })
+
+  const repo = { owner: project.repoOwner, repo: project.repoName }
+  const info = await services.sourceHost.getRepo(repo)
+  if (info === null) return fail(services, state, 'The repository was not found or is not public.')
+
+  const text = await services.sourceHost.getFile(repo, 'package.json', info.defaultBranch)
+  if (text === null) return fail(services, state, 'The repository has no package.json at its root.')
+
+  let manifest: unknown
+  try {
+    manifest = JSON.parse(text)
+  } catch {
+    return fail(services, state, 'package.json is not valid JSON.')
+  }
+
+  const declared = listDependencies(manifest)
+  if (declared.length > LIMITS.dependenciesPerProject) {
+    return fail(
+      services,
+      state,
+      `package.json declares ${declared.length} dependencies; bumpcheck reads at most ${LIMITS.dependenciesPerProject}.`,
+    )
+  }
+
+  state.defaultBranch = info.defaultBranch
+  state.declared = declared
+  state.step = 'look-up'
+  return state
+}
+
+async function lookUp(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const toLookUp = state.declared.filter(needsRegistryLookup)
+  const batch = toLookUp.filter((dep) => !(dep.name in state.published)).slice(0, SCAN_PACING.registryLookupsPerStep)
+
+  for (const dep of batch) {
+    const info = await services.registry.getPackage(dep.name)
+    if (info === null) {
+      state.published[dep.name] = null
+      state.sources[dep.name] = null
+    } else {
+      // Keep only what triage needs, so the saved state stays small:
+      // the latest tag, plus the stable target when latest is a prerelease.
+      const target = pickTarget(info)
+      state.published[dep.name] = { latest: info.latest, versions: target === null ? [] : [target] }
+      state.sources[dep.name] = info.source
+    }
+  }
+
+  const done = toLookUp.filter((dep) => dep.name in state.published).length
+  await progress(services, state, 'look-up', `Checking versions (${done} of ${toLookUp.length})`, done, toLookUp.length)
+  if (done === toLookUp.length) state.step = 'attach-cached'
+  return state
+}
+
+async function attachCached(services: ScanServices, state: ScanState): Promise<ScanState> {
+  state.dependencies = state.declared.map((dep) => triageDependency(dep, state.published[dep.name] ?? null))
+
+  const needVerdict: DependencyResult[] = []
+  for (const dep of state.dependencies) {
+    if (dep.current === null || dep.target === null) continue
+    if (dep.triage !== 'major' && dep.triage !== 'minor' && dep.triage !== 'patch') continue
+    const key = verdictKey(dep.name, dep.current, dep.target)
+    // Any stored verdict is attached, including one an on-demand check made
+    // for a minor or patch upgrade. Only majors are judged automatically.
+    if ((await services.store.getVerdict(key)) !== null) dep.verdictKey = key
+    else if (dep.triage === 'major') needVerdict.push(dep)
+  }
+
+  // Runtime dependencies first; package.json order within each group.
+  state.judgeQueue = [
+    ...needVerdict.filter((d) => d.group === 'runtime'),
+    ...needVerdict.filter((d) => d.group === 'dev'),
+  ].map((d) => d.name)
+  state.judgeTotal = state.judgeQueue.length
+  state.step = state.judgeQueue.length > 0 ? 'judge' : 'write'
+  return state
+}
+
+async function judgeNext(services: ScanServices, state: ScanState): Promise<ScanState> {
+  if (!mayJudgeAnother({ judgedThisScan: state.report.judged })) {
+    return deferRest(state, 'scan-cap')
+  }
+  const day = utcDay(services.clock.now())
+  if (isDailyCeilingReached({ aiCallsToday: await services.store.getAiCalls(day) })) {
+    return deferRest(state, 'daily-ceiling')
+  }
+
+  const name = state.judgeQueue[0]
+  const dep = findDependency(state, name)
+  const from = dep.current as string
+  const to = dep.target as string
+  const key = verdictKey(name, from, to)
+  const source = state.sources[name] ?? null
+
+  await progress(
+    services,
+    state,
+    'judge',
+    `Reading the ${name} changelog`,
+    state.judgeTotal - state.judgeQueue.length,
+    state.judgeTotal,
+  )
+
+  const changelog = await findChangelog(services.sourceHost, source, name, { from, to })
+  const base = { key, packageName: name, fromVersion: from, toVersion: to, changes: [] }
+
+  if (changelog === null) {
+    // No changelog text means no AI call (decision 5). Not counted against the per-scan cap.
+    await services.store.putVerdict({
+      ...base,
+      status: 'no-changelog',
+      sourceUrl: releasesPageUrl(source, name),
+      inputTruncated: false,
+      decidedAt: iso(services.clock.now()),
+    })
+    dep.verdictKey = key
+    state.judgeQueue.shift()
+    if (state.judgeQueue.length === 0) state.step = 'write'
+    return state
+  }
+
+  const input = {
+    packageName: name,
+    fromVersion: from,
+    toVersion: to,
+    changelog: changelog.text,
+    truncated: changelog.truncated,
+  }
+
+  let result: JudgeResult = { ok: false, error: 'not attempted' }
+  for (let attempt = 1; attempt <= JUDGE.attemptsPerVerdict; attempt++) {
+    // The retry is an AI call too, so it is checked against the ceiling.
+    if (attempt > 1 && isDailyCeilingReached({ aiCallsToday: await services.store.getAiCalls(day) })) {
+      return deferRest(state, 'daily-ceiling')
+    }
+    await services.store.addAiCall(day)
+    result = await askJudge(services.judge, input)
+    if (result.ok) break
+  }
+
+  const verdict: Verdict = result.ok
+    ? {
+        ...base,
+        status: 'ready',
+        label: result.verdict.label,
+        summary: result.verdict.summary,
+        changes: result.verdict.changes,
+        sourceUrl: changelog.url,
+        inputTruncated: changelog.truncated,
+        decidedAt: iso(services.clock.now()),
+      }
+    : {
+        ...base,
+        status: 'failed',
+        failureReason: result.error,
+        sourceUrl: changelog.url,
+        inputTruncated: changelog.truncated,
+        decidedAt: iso(services.clock.now()),
+      }
+  await services.store.putVerdict(verdict)
+
+  dep.verdictKey = key
+  state.report.judged++
+  state.judgeQueue.shift()
+  if (state.judgeQueue.length === 0) state.step = 'write'
+  return state
+}
+
+async function writeResults(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const now = services.clock.now()
+  await services.store.updateProject(state.projectId, {
+    defaultBranch: state.defaultBranch,
+    dependencies: state.dependencies,
+    scanStatus: 'done',
+    scanProgress: null,
+    scanReport: state.report,
+    scanError: null,
+    lastScanAt: iso(now),
+    nextDueAt: iso(now + LIMITS.rescanIntervalMs),
+  })
+  state.step = 'alert'
+  return state
+}
+
+async function alert(services: ScanServices, state: ScanState): Promise<ScanState> {
+  if (!state.onDemand) await services.alertHook({ projectId: state.projectId })
+  return finish(state, 'succeeded', null)
+}
+
+// ---------------------------------------------------------------- helpers
+
+/** CHANGELOG.md first, then GitHub releases. Null when neither has in-range text. */
+async function findChangelog(
+  sourceHost: SourceHost,
+  source: SourceRepo | null,
+  packageName: string,
+  range: { from: string; to: string },
+): Promise<(SlicedChangelog & { url: string }) | null> {
+  if (source === null) return null
+
+  const file = await sourceHost.getChangelog(source)
+  if (file !== null) {
+    const sliced = sliceChangelog(file.text, range)
+    if (sliced.text !== '') return { ...sliced, url: file.url }
+  }
+
+  const list = await sourceHost.getReleases(source)
+  if (list !== null) {
+    const sliced = sliceReleases(list.releases, range, packageName)
+    if (sliced.text !== '') return { ...sliced, url: list.url }
+  }
+  return null
+}
+
+/** A judge must not throw, but if one does, count it as a failed attempt. */
+async function askJudge(judge: Judge, input: Parameters<Judge['judge']>[0]): Promise<JudgeResult> {
+  try {
+    return await judge.judge(input)
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** Leaves every remaining major for a later scan, marked with the limit that stopped it. */
+function deferRest(state: ScanState, limit: 'scan-cap' | 'daily-ceiling'): ScanState {
+  for (const name of state.judgeQueue) findDependency(state, name).deferredBy = limit
+  if (limit === 'scan-cap') state.report.deferredByScanCap += state.judgeQueue.length
+  else state.report.deferredByDailyCeiling += state.judgeQueue.length
+  state.judgeQueue = []
+  state.step = 'write'
+  return state
+}
+
+async function fail(services: ScanServices, state: ScanState, reason: string): Promise<ScanState> {
+  await markScanFailed(services, state.projectId, reason)
+  return finish(state, 'failed', reason)
+}
+
+function finish(state: ScanState, outcome: 'succeeded' | 'failed', reason: string | null): ScanState {
+  state.step = 'done'
+  state.outcome = outcome
+  state.failureReason = reason
+  return state
+}
+
+async function progress(
+  services: ScanServices,
+  state: ScanState,
+  step: ScanStep,
+  message: string,
+  done: number,
+  total: number,
+): Promise<void> {
+  await services.store.updateProject(state.projectId, { scanProgress: { step, message, done, total } })
+}
+
+function findDependency(state: ScanState, name: string): DependencyResult {
+  const dep = state.dependencies.find((d) => d.name === name)
+  if (dep === undefined) throw new Error(`scan state has no dependency ${name}`)
+  return dep
+}
+
+function releasesPageUrl(source: SourceRepo | null, packageName: string): string {
+  return source === null
+    ? `https://www.npmjs.com/package/${packageName}`
+    : `https://github.com/${source.owner}/${source.repo}/releases`
+}
+
+function iso(time: number): string {
+  return new Date(time).toISOString()
+}

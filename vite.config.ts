@@ -6,10 +6,11 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import checker from 'vite-plugin-checker'
 import { deepspaceBuild } from 'deepspace/build'
 import { prerender } from './prerender.ts'
+import { fakeServicesWorkerVars } from './src/services/mode.ts'
 
 const appDir = fileURLToPath(new URL('.', import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     generouted(),
@@ -18,8 +19,13 @@ export default defineConfig({
     // reject that OS call (`uv_interface_addresses`) even when loopback is
     // available. Inspector debugging is optional, so disable that probe in
     // the generated app and keep local dev/test startup deterministic.
+    //
+    // `config.vars` forwards bumpcheck's fake-services setting from the shell
+    // to the worker, for the dev/test server only; a build never gets it.
+    // See src/services/mode.ts.
     cloudflare({
       inspectorPort: false,
+      config: { vars: fakeServicesWorkerVars(command, process.env) },
     }),
     // The app id `define`, the preview-secret cleanup, and the client dedupe
     // hint — all shipped by the SDK so a fix to any of them arrives with a
@@ -64,4 +70,4 @@ export default defineConfig({
     // Dev-only; `vite build` ignores optimizeDeps.
     entries: ['./index.html', './src/pages/**/*.tsx'],
   },
-})
+}))

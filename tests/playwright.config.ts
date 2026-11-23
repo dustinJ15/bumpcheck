@@ -32,6 +32,10 @@ export default defineConfig({
     // enumerate every interface, which fails in restricted containers before
     // the app can start (`uv_interface_addresses`).
     command: `npx vite --port ${PORT} --strictPort --host 127.0.0.1`,
+    // bumpcheck: the test server always runs against fake services, so no
+    // browser test can reach GitHub, npm, Claude or email. This is the only
+    // place the setting is turned on; see src/services/mode.ts.
+    env: { BUMPCHECK_FAKE_SERVICES: 'true' },
     cwd: '..',
     // Readiness gates on the auth plane, not just vite: /api/auth/ok only
     // answers once workerd behind /api/* has booted, so no test starts
