@@ -410,3 +410,15 @@ Running 10 tests using 1 worker
 
   10 passed (27.8s)
 ```
+
+**Supervisor note (2026-11-23).** Verified and accepted: gate green on my own run (271 unit
+and engine, 6 smoke, 2 API, 10 signed-in), diff read, screenshots looked at. The page still
+wears the scaffold's dark theme; ticket 07 replaces it.
+
+**Live check after this ticket: NOT RUN.** I started `npm run live-check` once and the
+session's permission system refused the command before anything ran, so nothing was spent
+and the real implementations (GitHub response shapes, the Claude call, npm lookups) are still
+unverified against real services. Dustin needs to run it or allow it.
+
+The worker's three open questions (no rate limit on add-project, a refused Releases request
+cached for everyone, projects stuck in "queued") are now work items in ticket 04.
