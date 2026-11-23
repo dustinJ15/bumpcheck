@@ -188,7 +188,7 @@ touch APIs my code actually uses, with file and line links.
 |---|---|---|
 | 1 | Input is a public GitHub repo only: root `package.json`, default branch, no monorepos | One creation flow; the stretch reads the same repo |
 | 2 | Semver triage decides AI spend: majors (and `0.x` minors) are read automatically; minor and patch only on demand | AI goes where breakage is expected; triage is free and testable |
-| 3 | Verdicts are a shared cache keyed by package, current major, and target major.minor | A changelog verdict is the same for everyone; this is the main cost control |
+| 3 | Verdicts are a shared cache keyed by package, current major, and target major.minor. For a `0.x` current version the "current" part is `0.<minor>`, because each `0.x` minor is treated as a major (amended by Dustin, 2026-11-23) | A changelog verdict is the same for everyone; this is the main cost control. Without the `0.x` rule, a project on 0.1 would be shown a verdict judged from 0.4 |
 | 4 | Changelog text comes from `CHANGELOG.md` via the GitHub integration, then GitHub's public Releases API as a best-effort, unauthenticated fallback | Free coverage for releases-only packages; refusal degrades to "no changelog found" |
 | 5 | No changelog text means no AI call | Never guess, never pay for nothing |
 | 6 | Verdicts are structured and validated; no confidence score | API names feed impact analysis; a self-reported score is false precision |
@@ -306,7 +306,8 @@ scheduled task, and pages.
   reviewed verdict keys, the alert setting, the verdict keys already alerted, and (stretch) the
   impact results and import map. Members read their own; signed-out visitors and other members
   read public ones. Clients cannot create, update or delete.
-- **Verdicts.** Shared. Keyed by package, current major and target major.minor. Holds the
+- **Verdicts.** Shared. Keyed by package, current major (`0.<minor>` for a `0.x` current
+  version) and target major.minor. Holds the
   status (ready, no changelog, failed), the label (breaking, safe, unclear), summary, the list
   of changes (title, what changed, API names, what to do), the source link, whether the input
   was cut, and the exact versions judged. Readable by every role including signed-out visitors,

@@ -9,7 +9,9 @@
 2. **AI spend:** semver triage first, AI on major bumps (and `0.x` minors), with an on-demand
    "check this one" for the rest. `dependencies` and `devDependencies` only.
 3. **Verdicts:** one shared cache keyed by package, current major and target version; a new
-   verdict only when the target's major or minor changes.
+   verdict only when the target's major or minor changes. Amended 2026-11-23 during the build:
+   for a `0.x` current version the key uses `0.<minor>` instead of the major, so projects on
+   different `0.x` minors do not share a verdict.
 4. **Changelog source:** `CHANGELOG.md` through the GitHub integration, then the public
    Releases API as a best-effort free fallback; no text means no AI call.
 5. **Verdict shape:** structured (breaking, safe or unclear; summary; changes with API names and
