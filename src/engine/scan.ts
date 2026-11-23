@@ -14,6 +14,16 @@
  *   alert          hand off to the alert hook (a no-op until ticket 06)
  *   done
  *
+ * An on-demand scan ("check this one", or a retry of a failed verdict) is the
+ * short version. It reads nothing from the repo and judges only what was
+ * asked for:
+ *
+ *   read-request   read the package names the server action recorded on the
+ *                  project row (`checkRequests`) and queue those for the judge
+ *   judge          the same step as above, so the same two limits apply
+ *   write          attach the new verdicts; the scan times are left alone
+ *   done           (never alerts)
+ *
  * Every outside call goes through the injected services, so this file has no
  * platform imports and runs unchanged in tests.
  *
@@ -39,6 +49,7 @@ import {
   type PublishedVersions,
 } from '../core/triage'
 import { verdictKey } from '../core/verdict'
+import { verdictCovers } from '../core/verdict-cover'
 import type { Clock, Judge, JudgeResult, PackageRegistry, RecordStore, SourceHost } from '../services/types'
 import { readRepoManifest } from './manifest'
 
@@ -56,12 +67,23 @@ export interface ScanServices {
   alertHook: AlertHook
 }
 
-export type ScanStep = 'read-manifest' | 'look-up' | 'attach-cached' | 'judge' | 'write' | 'alert' | 'done'
+export type ScanStep =
+  | 'read-request'
+  | 'read-manifest'
+  | 'look-up'
+  | 'attach-cached'
+  | 'judge'
+  | 'write'
+  | 'alert'
+  | 'done'
 
 /** Everything a scan needs to continue. Plain JSON: safe to save between job ticks. */
 export interface ScanState {
   projectId: string
-  /** True for a "check this one" read; on-demand scans never alert. */
+  /**
+   * True for a "check this one" read or a retry: only the dependencies named
+   * in the project's `checkRequests` are judged, and no alert is sent.
+   */
   onDemand: boolean
   step: ScanStep
   /** How the scan ended, once `step` is "done". */
@@ -86,7 +108,7 @@ export function startScan(projectId: string, options: { onDemand?: boolean } = {
   return {
     projectId,
     onDemand: options.onDemand ?? false,
-    step: 'read-manifest',
+    step: options.onDemand ? 'read-request' : 'read-manifest',
     outcome: null,
     failureReason: null,
     defaultBranch: null,
@@ -104,6 +126,8 @@ export function startScan(projectId: string, options: { onDemand?: boolean } = {
 export async function runScanStep(services: ScanServices, state: ScanState): Promise<ScanState> {
   const next = structuredClone(state)
   switch (next.step) {
+    case 'read-request':
+      return readRequest(services, next)
     case 'read-manifest':
       return readManifest(services, next)
     case 'look-up':
@@ -137,18 +161,91 @@ export async function runScan(
 }
 
 /**
- * Records a failed scan on the project: status and reason only. The
- * dependency list, and the verdicts it points at, stay as they were.
+ * Records a failed scan on the project: status and reason, and any on-demand
+ * request is dropped. The dependency list, and the verdicts it points at,
+ * stay as they were.
  */
 export async function markScanFailed(
   services: Pick<ScanServices, 'store'>,
   projectId: string,
   reason: string,
 ): Promise<void> {
-  await services.store.updateProject(projectId, { scanStatus: 'failed', scanError: reason, scanProgress: null })
+  await services.store.updateProject(projectId, {
+    scanStatus: 'failed',
+    scanError: reason,
+    scanProgress: null,
+    checkRequests: [],
+  })
+}
+
+/**
+ * Records an on-demand check that could not finish. The project's last full
+ * scan still stands, so the project stays "done" with its results; only the
+ * reason is recorded (the page shows it as "the last check failed") and the
+ * request is dropped, so the user can ask again.
+ */
+export async function markCheckFailed(
+  services: Pick<ScanServices, 'store'>,
+  projectId: string,
+  reason: string,
+): Promise<void> {
+  await services.store.updateProject(projectId, {
+    scanStatus: 'done',
+    scanError: reason,
+    scanProgress: null,
+    checkRequests: [],
+  })
 }
 
 // ------------------------------------------------------------------ steps
+
+/**
+ * On-demand scans start here. The server action has already checked the
+ * caller, the project and the request; this step reads the request from the
+ * project row and decides which of the named dependencies need the judge.
+ *
+ * A dependency with a usable cached verdict is attached for free. One with
+ * no verdict, a failed one (a retry), or one that was read from a later
+ * version than the project is on, goes to the judge step, which
+ * applies the per-scan cap and the daily ceiling exactly as a full scan does.
+ */
+async function readRequest(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const project = await services.store.getProject(state.projectId)
+  if (project === null) return finish(state, 'failed', 'The project no longer exists.')
+
+  await services.store.updateProject(state.projectId, {
+    scanStatus: 'scanning',
+    scanError: null,
+    scanProgress: { step: 'read-request', message: 'Starting the check', done: 0, total: 1 },
+  })
+
+  // Start from the last scan's results: an on-demand scan changes only the
+  // dependencies it was asked about.
+  state.defaultBranch = project.defaultBranch
+  state.dependencies = project.dependencies
+
+  const requested = new Set(project.checkRequests)
+  for (const dep of state.dependencies) {
+    if (!requested.has(dep.name) || dep.current === null || dep.target === null) continue
+    // Nothing to read for a dependency that is not behind.
+    if (dep.triage !== 'major' && dep.triage !== 'minor' && dep.triage !== 'patch') continue
+    delete dep.deferredBy
+    const key = verdictKey(dep.name, dep.current, dep.target)
+    const cached = await services.store.getVerdict(key)
+    if (cached !== null && cached.status !== 'failed' && verdictCovers(cached, dep)) {
+      dep.verdictKey = key
+      continue
+    }
+    // The registry says where the package's changelog lives.
+    const info = await services.registry.getPackage(dep.name)
+    state.sources[dep.name] = info === null ? null : info.source
+    state.judgeQueue.push(dep.name)
+  }
+
+  state.judgeTotal = state.judgeQueue.length
+  state.step = state.judgeQueue.length > 0 ? 'judge' : 'write'
+  return state
+}
 
 async function readManifest(services: ScanServices, state: ScanState): Promise<ScanState> {
   const project = await services.store.getProject(state.projectId)
@@ -203,7 +300,9 @@ async function attachCached(services: ScanServices, state: ScanState): Promise<S
     const key = verdictKey(dep.name, dep.current, dep.target)
     // Any stored verdict is attached, including one an on-demand check made
     // for a minor or patch upgrade. Only majors are judged automatically.
-    if ((await services.store.getVerdict(key)) !== null) dep.verdictKey = key
+    // (src/core/verdict-cover.ts says when a stored verdict covers this dependency.)
+    const cached = await services.store.getVerdict(key)
+    if (cached !== null && verdictCovers(cached, dep)) dep.verdictKey = key
     else if (dep.triage === 'major') needVerdict.push(dep)
   }
 
@@ -308,6 +407,21 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
 }
 
 async function writeResults(services: ScanServices, state: ScanState): Promise<ScanState> {
+  if (state.onDemand) {
+    // Not a full scan: the last scan's time, due time and report stay as
+    // they were. Only the dependency list (with the new verdict pointers)
+    // changes, and the request is cleared.
+    await services.store.updateProject(state.projectId, {
+      dependencies: state.dependencies,
+      scanStatus: 'done',
+      scanProgress: null,
+      scanError: null,
+      checkRequests: [],
+    })
+    state.step = 'alert'
+    return state
+  }
+
   const now = services.clock.now()
   await services.store.updateProject(state.projectId, {
     defaultBranch: state.defaultBranch,
@@ -318,6 +432,7 @@ async function writeResults(services: ScanServices, state: ScanState): Promise<S
     scanError: null,
     lastScanAt: iso(now),
     nextDueAt: iso(now + LIMITS.rescanIntervalMs),
+    checkRequests: [],
   })
   state.step = 'alert'
   return state

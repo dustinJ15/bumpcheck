@@ -53,6 +53,9 @@ export const projectsSchema: CollectionSchema = {
     { name: 'nextDueAt', storage: 'text', interpretation: { kind: 'datetime' } },
     { name: 'lastScanRequestedAt', storage: 'text', interpretation: { kind: 'datetime' } },
     { name: 'lastOpenedAt', storage: 'text', interpretation: { kind: 'datetime' } },
+    // Package names the next on-demand job should read (string[]). The job
+    // payload carries only the project id, so the request is recorded here.
+    { name: 'checkRequests', storage: 'text', interpretation: 'json', default: [] },
     // Triage: verdict keys the user marked as reviewed.
     { name: 'reviewedKeys', storage: 'text', interpretation: 'json', default: [] },
     // Email alerts: off by default (story 38), and the verdict keys already alerted.

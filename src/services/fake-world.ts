@@ -11,15 +11,26 @@
  * namespace so nothing here can be mistaken for, or collide with, a real
  * repo or package.
  *
- * `bumpcheck-fake/demo` has one dependency for each state a scan can produce:
+ * `bumpcheck-fake/demo` has one dependency for each state the project page
+ * can show:
  *
  *   @bumpcheck-fake/router       major, changelog file   -> breaking verdict
+ *   @bumpcheck-fake/big          major, long changelog   -> breaking, changelog cut at the cap
  *   @bumpcheck-fake/dates        major, no changelog     -> "no changelog found"
- *   @bumpcheck-fake/colors       minor                   -> not read
+ *   @bumpcheck-fake/colors       minor                   -> not read; safe when checked on request
  *   @bumpcheck-fake/tiny         up to date
  *   local-thing                  a file: path            -> not checked
  *   @bumpcheck-fake/test-runner  dev, major, releases    -> safe verdict
  *   @bumpcheck-fake/types        dev, 0.x minor          -> unclear verdict
+ *   @bumpcheck-fake/garbled      dev, major              -> failed verdict (the judge never makes sense)
+ *   @bumpcheck-fake/lint         dev, patch              -> not read
+ *
+ * `bumpcheck-fake/slow` has three majors whose fake judge takes a moment to
+ * answer, so a browser test can watch a scan in progress. `colors` is slow
+ * too, so a "check this one" can be watched. `bumpcheck-fake/empty` declares
+ * no dependencies at all. `bumpcheck-fake/older` is on an older `colors` than
+ * the demo repo. `bumpcheck-fake/offline` has one minor upgrade whose
+ * changelog the fake GitHub refuses to serve, so a check of it cannot finish.
  */
 
 import {
@@ -49,12 +60,34 @@ const PACKAGES: Record<string, RegistryPackage> = Object.fromEntries([
   fakePackage('tiny', '1.0.0'),
   fakePackage('test-runner', '3.0.0'),
   fakePackage('types', '0.5.2'),
+  fakePackage('big', '9.0.0'),
+  fakePackage('garbled', '2.0.0'),
+  fakePackage('lint', '1.2.3'),
+  fakePackage('slow-a', '2.0.0'),
+  fakePackage('slow-b', '3.0.0'),
+  fakePackage('slow-c', '4.0.0'),
+  fakePackage('unreachable', '1.1.0'),
 ])
+
+/** Every package the fake registry knows. The test reset clears their verdicts by name. */
+export const FAKE_PACKAGE_NAMES: readonly string[] = Object.keys(PACKAGES)
+
+/**
+ * How long the fake judge waits before answering, by package. Long enough
+ * for a browser test to see the scan's progress on the page.
+ */
+export const FAKE_JUDGE_DELAY_MS: Readonly<Record<string, number>> = {
+  [`@${FAKE_OWNER}/slow-a`]: 1500,
+  [`@${FAKE_OWNER}/slow-b`]: 1500,
+  [`@${FAKE_OWNER}/slow-c`]: 1500,
+  [`@${FAKE_OWNER}/colors`]: 2000,
+}
 
 const DEMO_PACKAGE_JSON = JSON.stringify({
   name: 'demo',
   dependencies: {
     [`@${FAKE_OWNER}/router`]: '^4.18.0',
+    [`@${FAKE_OWNER}/big`]: '^8.0.0',
     [`@${FAKE_OWNER}/dates`]: '^2.30.0',
     [`@${FAKE_OWNER}/colors`]: '^5.3.0',
     [`@${FAKE_OWNER}/tiny`]: '^1.0.0',
@@ -63,8 +96,26 @@ const DEMO_PACKAGE_JSON = JSON.stringify({
   devDependencies: {
     [`@${FAKE_OWNER}/test-runner`]: '^1.6.0',
     [`@${FAKE_OWNER}/types`]: '^0.4.0',
+    [`@${FAKE_OWNER}/garbled`]: '^1.0.0',
+    [`@${FAKE_OWNER}/lint`]: '^1.2.0',
   },
 })
+
+const SLOW_PACKAGE_JSON = JSON.stringify({
+  name: 'slow',
+  dependencies: {
+    [`@${FAKE_OWNER}/slow-a`]: '^1.0.0',
+    [`@${FAKE_OWNER}/slow-b`]: '^2.0.0',
+    [`@${FAKE_OWNER}/slow-c`]: '^3.0.0',
+  },
+})
+
+/** A changelog well past the judge's input cap, so the slicer has to cut it. */
+const BIG_CHANGELOG = [
+  '## 9.0.0',
+  '- BREAKING: `open(path)` now returns a promise.',
+  ...Array.from({ length: 1200 }, (_, i) => `- Internal change number ${i + 1}, of no interest to anyone.`),
+].join('\n')
 
 const SMALL_PACKAGE_JSON = JSON.stringify({
   name: 'small',
@@ -82,6 +133,12 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
     [`${FAKE_OWNER}/second`]: repo(SMALL_PACKAGE_JSON),
     [`${FAKE_OWNER}/third`]: repo(SMALL_PACKAGE_JSON),
     [`${FAKE_OWNER}/fourth`]: repo(SMALL_PACKAGE_JSON),
+    [`${FAKE_OWNER}/slow`]: repo(SLOW_PACKAGE_JSON),
+    [`${FAKE_OWNER}/empty`]: repo(JSON.stringify({ name: 'empty' })),
+    [`${FAKE_OWNER}/older`]: repo(JSON.stringify({ name: 'older', dependencies: { [`@${FAKE_OWNER}/colors`]: '^5.1.0' } })),
+    [`${FAKE_OWNER}/offline`]: repo(
+      JSON.stringify({ name: 'offline', dependencies: { [`@${FAKE_OWNER}/unreachable`]: '^1.0.0' } }),
+    ),
     // Repos the add-project check refuses.
     [`${FAKE_OWNER}/no-manifest`]: repo(null),
     [`${FAKE_OWNER}/bad-json`]: repo('{ this is not json'),
@@ -99,6 +156,25 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
       '- Maintenance release.',
     ].join('\n'),
     [`${FAKE_OWNER}/types`]: ['## 0.5.0', '- Various improvements.'].join('\n'),
+    [`${FAKE_OWNER}/big`]: BIG_CHANGELOG,
+    [`${FAKE_OWNER}/garbled`]: ['## 2.0.0', '- Rewritten.'].join('\n'),
+    [`${FAKE_OWNER}/colors`]: [
+      '## 5.4.1',
+      '- Fixed a typo.',
+      '',
+      '## 5.4.0',
+      '- Added `colors.dim()`.',
+      '',
+      '## 5.3.0',
+      '- Added `colors.bold()`.',
+      '',
+      '## 5.2.0',
+      '- Added `colors.italic()`.',
+    ].join('\n'),
+    [`${FAKE_OWNER}/lint`]: ['## 1.2.3', '- Fixed a false positive.'].join('\n'),
+    [`${FAKE_OWNER}/slow-a`]: ['## 2.0.0', '- BREAKING: renamed the main export.'].join('\n'),
+    [`${FAKE_OWNER}/slow-b`]: ['## 3.0.0', '- BREAKING: renamed the main export.'].join('\n'),
+    [`${FAKE_OWNER}/slow-c`]: ['## 4.0.0', '- BREAKING: renamed the main export.'].join('\n'),
   },
   releases: {
     [`${FAKE_OWNER}/test-runner`]: [
@@ -112,6 +188,27 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
 const fakeWorldResponder: FakeJudgeResponder = (input, attempt) => {
   if (input.packageName === `@${FAKE_OWNER}/test-runner`) {
     return { label: 'safe', summary: 'No breaking changes are listed (fake judge).', changes: [] }
+  }
+  if (input.packageName === `@${FAKE_OWNER}/colors` || input.packageName === `@${FAKE_OWNER}/lint`) {
+    return { label: 'safe', summary: 'Only additions and fixes are listed (fake judge).', changes: [] }
+  }
+  if (input.packageName === `@${FAKE_OWNER}/garbled`) {
+    // Not a verdict, on every attempt: the engine stores a failed verdict.
+    return 'I am sorry, I cannot help with that.'
+  }
+  if (input.packageName === `@${FAKE_OWNER}/big`) {
+    return {
+      label: 'breaking',
+      summary: 'open() became asynchronous in 9.0.0 (fake judge).',
+      changes: [
+        {
+          title: 'open() returns a promise',
+          whatChanged: '`open(path)` used to return the handle directly.',
+          apiNames: ['open'],
+          whatToDo: 'Await the result of `open()`.',
+        },
+      ],
+    }
   }
   if (input.packageName === `@${FAKE_OWNER}/types`) {
     return { label: 'unclear', summary: 'The changelog is too vague to tell (fake judge).', changes: [] }
@@ -145,11 +242,36 @@ export interface FakeWorld {
   judge: Judge
 }
 
-/** A fresh set of fakes over the fixed data above. */
-export function buildFakeWorld(): FakeWorld {
+/** The source repo of the one fake package whose changelog cannot be fetched. */
+const UNREACHABLE_REPO = 'unreachable'
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * A fresh set of fakes over the fixed data above. `sleep` is how the slow
+ * packages wait; unit tests pass one that returns at once.
+ */
+export function buildFakeWorld(options: { sleep?: (ms: number) => Promise<void> } = {}): FakeWorld {
+  const sleep = options.sleep ?? realSleep
+  const judge = new FakeJudge(fakeWorldResponder)
+  const sourceHost = new FakeSourceHost(SOURCE_HOST_DATA)
   return {
     registry: new FakeRegistry(PACKAGES),
-    sourceHost: new FakeSourceHost(SOURCE_HOST_DATA),
-    judge: new FakeJudge(fakeWorldResponder),
+    sourceHost: {
+      getRepo: (repo) => sourceHost.getRepo(repo),
+      getFile: (repo, path, ref) => sourceHost.getFile(repo, path, ref),
+      getChangelog: async (source) => {
+        if (source.repo === UNREACHABLE_REPO) throw new Error('GitHub answered 503 (fake)')
+        return sourceHost.getChangelog(source)
+      },
+      getReleases: (source) => sourceHost.getReleases(source),
+    },
+    judge: {
+      judge: async (input) => {
+        const delay = FAKE_JUDGE_DELAY_MS[input.packageName] ?? 0
+        if (delay > 0) await sleep(delay)
+        return judge.judge(input)
+      },
+    },
   }
 }

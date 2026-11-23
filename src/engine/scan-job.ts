@@ -18,7 +18,7 @@
 
 import { SCAN_PACING } from '../config'
 import type { ScanReport } from '../core/model'
-import { markScanFailed, startScan, type ScanServices, type ScanState } from './scan'
+import { markCheckFailed, markScanFailed, startScan, type ScanServices, type ScanState } from './scan'
 import { runScanTick } from './tick'
 
 /** What the job saves between runs. Plain JSON. */
@@ -54,10 +54,15 @@ export async function runScanJobRun(
   })
   const scan = tick.state
 
-  /** Marks the project failed (keeping its old results) and ends the job. */
+  // An on-demand job is a "check" to the user, and its failure is recorded
+  // differently: the project's last full scan still stands (see markCheckFailed).
+  const what = scan.onDemand ? 'check' : 'scan'
+  const recordFailure = scan.onDemand ? markCheckFailed : markScanFailed
+
+  /** Records the failure on the project (keeping its old results) and ends the job. */
   const giveUp = async (outcome: 'failed' | 'cancelled', reason: string): Promise<ScanJobRun> => {
     // If even this write fails there is nothing more the job can do.
-    await markScanFailed(services, projectId, reason).catch(() => {})
+    await recordFailure(services, projectId, reason).catch(() => {})
     return { next: 'finish', outcome, reason, report: scan.report }
   }
 
@@ -66,11 +71,11 @@ export async function runScanJobRun(
       return { next: 'finish', outcome: scan.outcome ?? 'failed', reason: scan.failureReason, report: scan.report }
 
     case 'budget':
-      if (!options.mayRunAgain) return giveUp('failed', 'The scan took too long and was stopped.')
+      if (!options.mayRunAgain) return giveUp('failed', `The ${what} took too long and was stopped.`)
       return { next: 'continue', checkpoint: { scan, failedTicks: checkpoint.failedTicks }, afterMs: 0 }
 
     case 'cancelled':
-      return giveUp('cancelled', 'The scan was cancelled.')
+      return giveUp('cancelled', `The ${what} was cancelled.`)
 
     case 'error': {
       const failedTicks = checkpoint.failedTicks + 1
@@ -78,7 +83,7 @@ export async function runScanJobRun(
         // Retry from the last step that completed.
         return { next: 'continue', checkpoint: { scan, failedTicks }, afterMs: SCAN_PACING.retryDelayMs }
       }
-      return giveUp('failed', 'The scan could not finish. Try again later.')
+      return giveUp('failed', `The ${what} could not finish. Try again later.`)
     }
   }
 }

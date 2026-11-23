@@ -13,9 +13,10 @@
 
 import { readFileSync } from 'node:fs'
 import { test, expect, loadAllTestAccounts } from 'deepspace/testing'
-import type { Page, TestInfo } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { LIMITS } from '../src/config'
 import { FAKE_OWNER } from '../src/services/fake-world'
+import { authToken, callAction, capture, openProjects, projectRow, resetProjects } from './helpers/app'
 
 const usableTestAccounts = loadAllTestAccounts().length
 test.skip(usableTestAccounts < 2, `Needs the 2 test accounts (Alice and Bob), found ${usableTestAccounts}.`)
@@ -29,46 +30,9 @@ const JOB_ROOM = `app:${APP_ID}`
 
 // ---------------------------------------------------------------- helpers
 
-/** The signed-in page's short-lived token, as the app itself fetches it. */
-async function authToken(page: Page): Promise<string> {
-  const response = await page.request.post('/api/auth/token', { headers: { 'Content-Type': 'application/json' } })
-  const body = (await response.json()) as { token?: string }
-  if (!body.token) throw new Error('could not get an auth token for the test account')
-  return body.token
-}
-
-/** Calls a server action as the page's user. */
-async function callAction(page: Page, name: string, params: Record<string, unknown> = {}) {
-  const response = await page.request.post(`/api/actions/${name}`, {
-    headers: { Authorization: `Bearer ${await authToken(page)}` },
-    data: params,
-  })
-  return (await response.json()) as { success: boolean; error?: string; data?: Record<string, unknown> }
-}
-
-/** Empties the user's project list (a test-only action; see src/actions/test-reset.ts). */
-async function resetProjects(page: Page) {
-  const result = await callAction(page, 'test-reset-my-projects')
-  expect(result.success, result.error).toBe(true)
-}
-
-async function openProjects(page: Page) {
-  await page.goto('/projects')
-  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible({ timeout: 15_000 })
-}
-
 async function addThroughForm(page: Page, repo: string) {
   await page.getByLabel('Add a project').fill(repo)
   await page.getByRole('button', { name: 'Add project' }).click()
-}
-
-function projectRow(page: Page, repo: string) {
-  return page.locator(`[data-testid="project-row"][data-repo="${repo}"]`)
-}
-
-/** Saved under the test's output folder; the ticket's evidence is copied from there. */
-async function capture(page: Page, testInfo: TestInfo, name: string) {
-  await page.screenshot({ path: testInfo.outputPath(name), fullPage: true })
 }
 
 /**
@@ -108,13 +72,13 @@ const ENQUEUE_SCAN = {
 
 test('the projects list starts empty, a project is added, and its first scan finishes while watching', async ({
   users,
-}, testInfo) => {
+}) => {
   const [alice] = await users(['Alice'])
   await resetProjects(alice.page)
   await openProjects(alice.page)
 
   await expect(alice.page.getByTestId('projects-empty')).toBeVisible()
-  await capture(alice.page, testInfo, 'projects-empty.png')
+  await capture(alice.page, 'projects-empty.png')
 
   // A GitHub URL, in mixed case: both forms of input in one go.
   await addThroughForm(alice.page, `https://github.com/Bumpcheck-Fake/Demo`)
@@ -130,8 +94,8 @@ test('the projects list starts empty, a project is added, and its first scan fin
   // background job. Its status reaches the page through the project row.
   await expect(row).toHaveAttribute('data-scan-status', 'done', { timeout: 30_000 })
   await expect(row.getByTestId('project-scan-status')).toContainText('Scanned')
-  await expect(row).toContainText('7 dependencies')
-  await capture(alice.page, testInfo, 'projects-with-project.png')
+  await expect(row).toContainText('10 dependencies')
+  await capture(alice.page, 'projects-with-project.png')
 
   // It is still there after a reload: it was written by the server, not held in the page.
   await alice.page.reload()

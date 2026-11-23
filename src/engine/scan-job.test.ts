@@ -84,7 +84,7 @@ describe('runScanJobRun', () => {
     const { services, store } = world()
     await runToEnd(services)
     const before = store.projects.get(PROJECT)
-    expect(before?.dependencies).toHaveLength(7)
+    expect(before?.dependencies).toHaveLength(10)
 
     // A later scan of the same project, with the registry down.
     const down = world({ failures: 1000 })

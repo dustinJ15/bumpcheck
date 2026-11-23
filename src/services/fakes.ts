@@ -184,6 +184,7 @@ export class MemoryRecordStore implements RecordStore {
       scanError: null,
       lastScanAt: null,
       nextDueAt: null,
+      checkRequests: [],
       ...fields,
     }))
   }

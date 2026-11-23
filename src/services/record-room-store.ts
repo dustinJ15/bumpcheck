@@ -42,6 +42,7 @@ export class RecordRoomStore implements RecordStore {
       scanError: text(data.scanError),
       lastScanAt: text(data.lastScanAt),
       nextDueAt: text(data.nextDueAt),
+      checkRequests: json(data.checkRequests, []),
     }
   }
 

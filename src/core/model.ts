@@ -132,4 +132,11 @@ export interface ProjectScanFields {
   /** ISO times. */
   lastScanAt: string | null
   nextDueAt: string | null
+  /**
+   * Package names an on-demand job should read ("check this one", or a
+   * retry of a failed verdict). Written by the server action before it
+   * enqueues the job, because the job's payload carries only the project id.
+   * Emptied when the job ends.
+   */
+  checkRequests: string[]
 }

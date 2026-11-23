@@ -1,11 +1,13 @@
 /**
- * Projects list: the signed-in user's projects, each with its scan status,
- * and the form that adds one.
+ * Projects list: the signed-in user's projects, each with its scan status
+ * and its count of unreviewed breaking upgrades, and the form that adds one.
  *
  * Reads are live: `useQuery` subscribes to the user's own project rows, so a
  * new project appears, and its scan status changes, without a reload
  * (story 23). The scan job writes its progress to the project row because
- * users cannot watch the job room.
+ * users cannot watch the job room. The count comes from the same pure
+ * function the project page uses (src/core/report.ts), over the project's
+ * dependencies and the shared verdicts.
  *
  * Writes are not done here. The form calls the `add-project` server action,
  * which checks the caller, the limits and the repo, and answers with a
@@ -15,23 +17,16 @@
  */
 
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useUser, type RecordData } from 'deepspace'
+import { ScanStatusLine } from '@/components/report/ScanStatus'
 import { Badge, Button, Input } from '@/components/ui'
 import { LIMITS } from '@/config'
-import type { DependencyResult, ScanProgress, ScanStatus } from '@/core/model'
+import type { DependencyResult } from '@/core/model'
+import { countUnreviewedBreaking, type VerdictsByKey } from '@/core/report'
 import { callAction } from '@/lib/actions'
-
-/** The columns of a project row this page reads. */
-interface ProjectRow {
-  userId: string
-  repoOwner: string
-  repoName: string
-  scanStatus: ScanStatus
-  scanProgress: ScanProgress | string | null
-  scanError: string | null
-  lastScanAt: string | null
-  dependencies: DependencyResult[] | string | null
-}
+import { readJson } from '@/lib/json'
+import { useVerdicts, type ProjectRow } from '@/lib/records'
 
 export default function ProjectsPage() {
   const { user } = useUser()
@@ -113,6 +108,8 @@ function ProjectList({ userId }: { userId: string }) {
     orderBy: 'createdAt',
     orderDir: 'desc',
   })
+  // The shared verdicts, for each project's count of breaking upgrades.
+  const verdicts = useVerdicts()
 
   if (status === 'loading') return <ListMessage>Loading your projects...</ListMessage>
   if (status === 'error') {
@@ -137,26 +134,55 @@ function ProjectList({ userId }: { userId: string }) {
   return (
     <ul data-testid="projects-list" className="divide-y divide-border rounded-lg border border-border bg-card">
       {records.map((record) => (
-        <ProjectListItem key={record.recordId} record={record} />
+        <ProjectListItem
+          key={record.recordId}
+          record={record}
+          verdicts={verdicts.status === 'ready' ? verdicts.verdicts : null}
+        />
       ))}
     </ul>
   )
 }
 
-function ProjectListItem({ record }: { record: RecordData<ProjectRow> }) {
+/** `verdicts` is null until the shared verdicts have loaded: no count is shown before then. */
+function ProjectListItem({ record, verdicts }: { record: RecordData<ProjectRow>; verdicts: VerdictsByKey | null }) {
   const project = record.data
   const name = `${project.repoOwner}/${project.repoName}`
   const dependencies = readJson<DependencyResult[]>(project.dependencies) ?? []
+  const reviewedKeys = readJson<string[]>(project.reviewedKeys) ?? []
+  // Shown once the project has results. A failed re-scan keeps the old ones, so it keeps its count.
+  const breaking =
+    verdicts !== null && (project.scanStatus === 'done' || dependencies.length > 0)
+      ? countUnreviewedBreaking(dependencies, verdicts, reviewedKeys)
+      : null
 
   return (
     <li
       data-testid="project-row"
       data-repo={name}
       data-scan-status={project.scanStatus}
+      data-breaking-count={breaking ?? undefined}
       className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0">
-        <p className="truncate font-mono text-sm font-medium">{name}</p>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Link
+            to={`/projects/${record.recordId}`}
+            className="break-all font-mono text-sm font-medium underline-offset-4 hover:underline"
+          >
+            {name}
+          </Link>
+          {breaking !== null &&
+            (breaking > 0 ? (
+              <Badge data-testid="project-breaking-count" variant="destructive" size="sm" className="shrink-0">
+                {breaking} breaking to review
+              </Badge>
+            ) : (
+              <span data-testid="project-breaking-count" className="text-xs text-muted-foreground">
+                Nothing breaking to review
+              </span>
+            ))}
+        </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           <a
             href={`https://github.com/${name}`}
@@ -174,45 +200,10 @@ function ProjectListItem({ record }: { record: RecordData<ProjectRow> }) {
           )}
         </p>
       </div>
-      <ScanStatusLine project={project} />
+      <div className="min-w-0 sm:max-w-[55%]">
+        <ScanStatusLine project={project} />
+      </div>
     </li>
-  )
-}
-
-/** The scan status in words: what is happening, or how the last scan ended. */
-function ScanStatusLine({ project }: { project: ProjectRow }) {
-  const progress = readJson<ScanProgress>(project.scanProgress)
-
-  switch (project.scanStatus) {
-    case 'queued':
-      return <StatusBadge variant="secondary" label="Queued" detail="Waiting for its scan to start" />
-    case 'scanning':
-      return <StatusBadge variant="info" label="Scanning" detail={progress?.message ?? 'Starting'} busy />
-    case 'done':
-      return <StatusBadge variant="success" label="Scanned" detail={formatTime(project.lastScanAt)} />
-    case 'failed':
-      return <StatusBadge variant="destructive" label="Scan failed" detail={project.scanError ?? 'Unknown reason'} />
-    default:
-      return <StatusBadge variant="outline" label="Not scanned" detail="" />
-  }
-}
-
-function StatusBadge(props: {
-  variant: 'secondary' | 'info' | 'success' | 'destructive' | 'outline'
-  label: string
-  detail: string
-  busy?: boolean
-}) {
-  return (
-    <div data-testid="project-scan-status" className="flex min-w-0 items-center gap-2 sm:max-w-[55%] sm:justify-end">
-      <Badge variant={props.variant} className="shrink-0 gap-1.5">
-        {props.busy && (
-          <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-        )}
-        {props.label}
-      </Badge>
-      {props.detail && <span className="truncate text-xs text-muted-foreground">{props.detail}</span>}
-    </div>
   )
 }
 
@@ -222,21 +213,4 @@ function ListMessage({ children }: { children: string }) {
       {children}
     </div>
   )
-}
-
-/** A JSON column, whether the client hands it over parsed or as text. */
-function readJson<T>(value: T | string | null | undefined): T | null {
-  if (value === null || value === undefined || value === '') return null
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return null
-  }
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return ''
-  const time = new Date(iso)
-  return Number.isNaN(time.getTime()) ? '' : time.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
