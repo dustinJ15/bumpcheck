@@ -19,6 +19,13 @@ import type { VerdictChange, VerdictLabel } from './model'
  * a new verdict is needed only when the target's major or minor changes.
  *
  *   verdictKey('express', '4.17.1', '5.1.0') === 'express@4->5.1'
+ *
+ * For a 0.x current version the "current" part is `0.<minor>`, because
+ * triage treats every 0.x minor as a major: upgrading from 0.1 and from 0.4
+ * cross different breaking changes, so they must not share a verdict.
+ *
+ *   verdictKey('pkg', '0.1.0', '0.5.2') === 'pkg@0.1->0.5'
+ *   verdictKey('pkg', '0.4.3', '0.5.2') === 'pkg@0.4->0.5'
  */
 export function verdictKey(packageName: string, currentVersion: string, targetVersion: string): string {
   const current = semver.parse(currentVersion)
@@ -26,7 +33,8 @@ export function verdictKey(packageName: string, currentVersion: string, targetVe
   if (current === null || target === null) {
     throw new Error(`verdictKey needs two semver versions, got ${currentVersion} and ${targetVersion}`)
   }
-  return `${packageName}@${current.major}->${target.major}.${target.minor}`
+  const currentPart = current.major === 0 ? `0.${current.minor}` : `${current.major}`
+  return `${packageName}@${currentPart}->${target.major}.${target.minor}`
 }
 
 const nonEmpty = z.string().trim().min(1)

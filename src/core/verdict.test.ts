@@ -15,10 +15,28 @@ const good = {
   ],
 }
 
-describe('verdictKey: package, current major, target major.minor', () => {
+describe('verdictKey: package, current major (0.minor for 0.x), target major.minor', () => {
   it('builds the shared cache key', () => {
     expect(verdictKey('express', '4.17.1', '5.1.0')).toBe('express@4->5.1')
-    expect(verdictKey('@scope/pkg', '0.4.0', '0.5.2')).toBe('@scope/pkg@0->0.5')
+    expect(verdictKey('@scope/pkg', '0.4.0', '0.5.2')).toBe('@scope/pkg@0.4->0.5')
+  })
+
+  it('gives two 0.x currents with different minors different keys', () => {
+    expect(verdictKey('pkg', '0.1.0', '0.5.0')).toBe('pkg@0.1->0.5')
+    expect(verdictKey('pkg', '0.4.0', '0.5.0')).toBe('pkg@0.4->0.5')
+    expect(verdictKey('pkg', '0.1.0', '0.5.0')).not.toBe(verdictKey('pkg', '0.4.0', '0.5.0'))
+    // Also when a 0.x package goes to 1.x.
+    expect(verdictKey('pkg', '0.1.0', '1.0.0')).not.toBe(verdictKey('pkg', '0.4.0', '1.0.0'))
+  })
+
+  it('gives two patch versions of the same 0.x minor the same key', () => {
+    expect(verdictKey('pkg', '0.4.0', '0.5.0')).toBe(verdictKey('pkg', '0.4.9', '0.5.3'))
+  })
+
+  it('is unchanged for a current major of 1 and up: the current minor is not in the key', () => {
+    expect(verdictKey('pkg', '1.0.0', '2.3.0')).toBe('pkg@1->2.3')
+    expect(verdictKey('pkg', '1.9.4', '2.3.0')).toBe('pkg@1->2.3')
+    expect(verdictKey('pkg', '12.1.0', '13.0.1')).toBe('pkg@12->13.0')
   })
 
   it('is the same for patch-level differences on either side', () => {

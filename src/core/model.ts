@@ -65,7 +65,8 @@ export type VerdictStatus = 'ready' | 'no-changelog' | 'failed'
 
 /**
  * A stored verdict. Shared by every project: keyed by package, current major
- * and target major.minor (see `verdictKey` in verdict.ts).
+ * (0.minor for a 0.x version) and target major.minor (see `verdictKey` in
+ * verdict.ts).
  */
 export interface Verdict {
   key: string

@@ -1,7 +1,8 @@
 /**
  * Verdicts: the shared cache of changelog verdicts (decision 3).
  *
- * One row per package, current major and target major.minor, shared by
+ * One row per package, current major (0.minor for a 0.x version) and target
+ * major.minor, shared by
  * every project. The content is public package information, so every role
  * reads every row, signed-out visitors included. Only server code writes.
  *
@@ -16,7 +17,7 @@ export const verdictsSchema: CollectionSchema = {
   name: 'verdicts',
   uniqueOn: ['key'],
   columns: [
-    // "express@4->5.1": see verdictKey in src/core/verdict.ts.
+    // "express@4->5.1", or "pkg@0.4->0.5" from a 0.x version: see verdictKey in src/core/verdict.ts.
     { name: 'key', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'packageName', storage: 'text', interpretation: 'plain', required: true },
     {
