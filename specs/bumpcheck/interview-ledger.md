@@ -61,8 +61,9 @@ recs for each and every question", then confirmed the ledger stands.
 27. **Test sends:** 3 per user per day.
 28. **Look:** its own identity: light, dense, developer-tool style, one accent colour,
     monospace for versions and package names; empty, loading and error states on every screen.
-29. **Loop:** workers on `claude-opus-5-5` at high effort, batches of 3, a supervising session,
-    Dustin's usage meter asked for at each batch boundary.
+29. **Loop:** workers on `claude-fable-5-2` at medium effort (Dustin changed this on 2026-11-23,
+    during the build, from `claude-opus-5-5` at high effort; ticket 01 ran on Opus), batches
+    of 3, a supervising session, Dustin's usage meter asked for at each batch boundary.
 30. **Ticket order:** scan engine and data model; add-project flow; project page with triage;
     scheduling and limits; public sharing and landing; email alerts; polish and design; deploy
     checkpoint; then impact analysis in two tickets.

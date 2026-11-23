@@ -71,8 +71,9 @@ a time**.
 
 For each ticket:
 
-1. **Start a fresh worker** on `claude-opus-5-5` at high effort with this prompt, filling in
-   the ticket file:
+1. **Start a fresh worker** on `claude-fable-5-2` at medium effort with this prompt, filling in
+   the ticket file (changed by Dustin on 2026-11-23 from `claude-opus-5-5` at high effort;
+   ticket 01's worker had already started on Opus and was left running):
 
    > Implement `specs/bumpcheck/tickets/<file>.md` using the `implement` skill. Read
    > `specs/bumpcheck/tickets/README.md` first; its rules and "Done means" are binding. Read
