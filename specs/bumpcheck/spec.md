@@ -232,6 +232,10 @@ touch APIs my code actually uses, with file and line links.
 - Prices: GitHub calls $0.0013 to $0.0039 each; email $0.013 each; Claude at provider cost plus
   an undisclosed markup. 100 credits = US$1.
 - The room identifier for jobs, schedules and records uses the app's immutable id, not its name.
+- Found during the build (SDK 0.44.2): the job room counts every handler run, including each
+  resume, as an attempt, so "retry once" is tracked in the job's own checkpoint. The scheduled
+  task room gives every signed-in member trigger, pause and resume, with no option to restrict
+  it, so the app restricts it at its own route to the owner's role.
 
 Where the docs and the installed types disagree, the installed types and the live CLI catalog
 win.

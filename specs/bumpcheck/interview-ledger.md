@@ -85,6 +85,14 @@ stop and ask for my input again".
 - **Add-project attempts (ticket 04):** capped at 20 per user per day, owner exempt, because
   each attempt costs GitHub calls even when refused.
 - **Refused Releases requests (ticket 04):** store no shared verdict; the next scan tries again.
+- **Cron room (ticket 04):** the installed SDK lets every signed-in member trigger, pause and
+  resume scheduled tasks, with no option to restrict it. The app locks it at its own route:
+  only the owner's role connects with write access.
+- **Failed scans and the schedule (ticket 04):** every full scan that ends, failed or not, sets
+  the next due time to 24 hours later. A scan that failed for a passing reason waits for the
+  user's Retry or the next daily scan. Retry is "scan now" and has the same 10-minute cooldown.
+- **Other ticket 04 numbers:** at most 5 scans enqueued per hourly tick; a queued or scanning
+  project with no progress for 30 minutes is treated as stalled.
 - **Test first (from ticket 03):** tickets README rule 12 and the supervisor's mutation check,
   at Dustin's request.
 
