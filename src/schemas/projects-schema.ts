@@ -6,9 +6,13 @@
  * the app owner, so the row carries the user's id in `userId`, the schema's
  * owner field, and the "own" part of the read rules checks that column.
  *
- * Reads use the platform's "published" rule: a caller reads a row they own,
- * or any row whose `visibility` is "public". Signed-out visitors (viewer
- * role) therefore see public projects only.
+ * Reads are owner-only: a caller reads a row whose `userId` is theirs, and
+ * no other row, whatever its `visibility`. The row holds its owner's id and
+ * the owner's review and alert state, and the platform sends whole rows, so
+ * a public project is not shown through this collection. Its public copy
+ * lives in `publicReports` (./public-reports-schema.ts), which the server
+ * writes when `visibility` becomes "public" and removes when it goes back.
+ * `visibility` here is the owner's setting; it is not a read rule.
  *
  * `userId` is deliberately not `userBound`: that would stamp the writer's id,
  * and the writer is always the owner's server context, never the user.
@@ -23,7 +27,6 @@ const NO_WRITES = { create: false, update: false, delete: false } as const
 export const projectsSchema: CollectionSchema = {
   name: 'projects',
   ownerField: 'userId',
-  visibilityField: 'visibility',
   uniqueOn: ['userId', 'repoOwner', 'repoName'],
   columns: [
     { name: 'userId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
@@ -66,8 +69,8 @@ export const projectsSchema: CollectionSchema = {
     { name: 'alertedKeys', storage: 'text', interpretation: 'json', default: [] },
   ],
   permissions: {
-    viewer: { read: 'published', ...NO_WRITES },
-    member: { read: 'published', ...NO_WRITES },
-    admin: { read: 'published', ...NO_WRITES },
+    viewer: { read: 'own', ...NO_WRITES },
+    member: { read: 'own', ...NO_WRITES },
+    admin: { read: 'own', ...NO_WRITES },
   },
 }

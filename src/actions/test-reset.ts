@@ -4,9 +4,10 @@
  * test server: a production build never has it (src/services/mode.ts,
  * proven by mode.test.ts).
  *
- * `test-reset-my-projects`: delete the caller's own projects, and the
- * caller's add-project attempts (the browser tests add far more than a
- * day's allowance of projects).
+ * `test-reset-my-projects`: delete the caller's own projects, their public
+ * reports, and the caller's add-project attempts (the browser tests add far
+ * more than a day's allowance of projects). It also removes the example
+ * fixture (below).
  *
  * The local record room keeps its data between test runs, and there is no
  * "delete project" action until ticket 06, so the browser tests call this
@@ -24,6 +25,12 @@
  * and enough runs in one day would reach the daily AI ceiling. It refuses in
  * the same way unless the fake-services setting is on, and it names only the
  * fake packages (`@bumpcheck-fake/...`), so it cannot touch a real verdict.
+ *
+ * `test-publish-example` (ticket 05): the landing page links to one public
+ * example report, whose id is a constant (src/config.ts). On the local test
+ * server no project has that id, so this copies the public report of one of
+ * the caller's own projects under the example id. That copy is the "local
+ * fixture" the landing page's link opens in the browser tests.
  *
  * Added for scheduling and limits (ticket 04), because a browser test cannot
  * wait a day, ten minutes, or an hour:
@@ -48,14 +55,25 @@
 import { clientBuild } from 'deepspace/worker'
 import type { ActionHandler } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { LIMITS, SCHEDULE } from '../config'
+import { EXAMPLE_PROJECT_ID, LIMITS, SCHEDULE } from '../config'
 import { utcDay } from '../core/limits'
+import { publicReportOf } from '../core/public-report'
+import { ownerActionTools } from '../server/action-routes'
+import { removeReport, writeReport } from '../server/public-report'
 import { FAKE_PACKAGE_NAMES } from '../services/fake-world'
 import { servicesMode } from '../services/mode'
 import { loadOwnProject } from './own-project'
 
 export const testResetMyProjects: ActionHandler<Env> = async ({ userId, tools, env }) => {
   if (servicesMode(env) !== 'fake') return { success: false, error: 'Action not found' }
+
+  // The public reports first, while the project rows still say which ones there are.
+  const mine = await tools.query('projects', { where: { userId } })
+  if (!mine.success) return { success: false, error: mine.error }
+  for (const reportId of [...mine.data.records.map((record) => record.recordId), EXAMPLE_PROJECT_ID]) {
+    const removed = await removeReport(tools, reportId)
+    if (!removed.ok) return { success: false, error: removed.error }
+  }
 
   let deleted = 0
   for (;;) {
@@ -67,6 +85,29 @@ export const testResetMyProjects: ActionHandler<Env> = async ({ userId, tools, e
   const attempts = await tools.deleteWhere('attempts', { userId })
   if (!attempts.success) return { success: false, error: attempts.error }
   return { success: true, data: { deleted } }
+}
+
+export const testPublishExample: ActionHandler<Env> = async ({ userId, params, tools, env }) => {
+  if (servicesMode(env) !== 'fake') return { success: false, error: 'Action not found' }
+
+  const own = await loadOwnProject(tools, userId, params.projectId)
+  if (!own.ok) return own.answer
+  const found = await tools.get('projects', own.project.id)
+  if (!found.success) return { success: false, error: found.error }
+  const data = found.data.record.data
+
+  const report = publicReportOf({
+    id: EXAMPLE_PROJECT_ID,
+    repoOwner: String(data.repoOwner),
+    repoName: String(data.repoName),
+    dependencies: own.project.dependencies,
+    scanStatus: own.project.scanStatus,
+    lastScanAt: typeof data.lastScanAt === 'string' ? data.lastScanAt : null,
+  })
+  // Written as the app owner, like every public report (src/server/public-report.ts).
+  const written = await writeReport(ownerActionTools(env), EXAMPLE_PROJECT_ID, report)
+  if (!written.ok) return { success: false, error: written.error }
+  return { success: true, data: { reportId: EXAMPLE_PROJECT_ID } }
 }
 
 export const testResetFakeWorld: ActionHandler<Env> = async ({ tools, env }) => {

@@ -43,6 +43,10 @@ export default function Navigation() {
   }, [location.pathname])
 
   const visibleNav = nav.filter((item) => {
+    // bumpcheck: a signed-out visitor (reading a public report, say) gets no
+    // app links. Every entry leads to a page that needs a sign-in, and a
+    // "Settings" link on a read-only public page would promise what is not there.
+    if (!isSignedIn) return false
     if (item.devOnly && !import.meta.env.DEV) return false
     if (!item.roles) return true
     if (!profileReady) return false
@@ -142,14 +146,16 @@ export default function Navigation() {
             </button>
           )}
 
-          <button
-            className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground md:hidden"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            aria-label="Toggle menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            {mobileMenuOpen ? <X className="h-4 w-4" aria-hidden /> : <Menu className="h-4 w-4" aria-hidden />}
-          </button>
+          {visibleNav.length > 0 && (
+            <button
+              className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground md:hidden"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X className="h-4 w-4" aria-hidden /> : <Menu className="h-4 w-4" aria-hidden />}
+            </button>
+          )}
         </div>
 
         {mobileMenuOpen && (

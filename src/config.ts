@@ -124,3 +124,19 @@ export const SCAN_PACING = {
    */
   jobRunsPerScan: 60,
 } as const
+
+/**
+ * The public example report the landing page links to ("See an example
+ * report" goes to /share/<this id>).
+ *
+ * TO CHANGE AFTER THE FIRST DEPLOY: on the live site, add the example repo
+ * (dustinJ15/bumpcheck-example) as a project, switch it to public on its
+ * settings page, and copy the last part of the shareable link shown there
+ * (https://.../share/<id>) into this constant. Then deploy again.
+ *
+ * Until then it names a local fixture: the browser tests publish a report
+ * under this id on the local test server (`test-publish-example` in
+ * src/actions/test-reset.ts). On a deployed site the placeholder id matches
+ * nothing, and the link shows "This report is not available".
+ */
+export const EXAMPLE_PROJECT_ID = 'local-example-fixture'

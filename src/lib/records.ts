@@ -9,6 +9,7 @@
 import { useMemo } from 'react'
 import { useQuery } from 'deepspace'
 import type { DependencyResult, ScanProgress, ScanStatus, Verdict, VerdictChange } from '@/core/model'
+import type { Visibility } from '@/core/public-report'
 import type { VerdictsByKey } from '@/core/report'
 import { readJson } from './json'
 
@@ -18,6 +19,8 @@ import { readJson } from './json'
  */
 export interface ProjectRow {
   userId: string
+  /** The owner's sharing choice. A public project has a copy in `publicReports`. */
+  visibility: Visibility | null
   repoOwner: string
   repoName: string
   scanStatus: ScanStatus
@@ -30,6 +33,19 @@ export interface ProjectRow {
   dependencies: DependencyResult[] | string | null
   reviewedKeys: string[] | string | null
   checkRequests: string[] | string | null
+}
+
+/**
+ * A public report row (src/schemas/public-reports-schema.ts): what anyone
+ * with the link reads. It has no owner, no review state and no alert state.
+ */
+export interface PublicReportRow {
+  projectId: string
+  repoOwner: string
+  repoName: string
+  scanStatus: ScanStatus
+  lastScanAt: string | null
+  dependencies: DependencyResult[] | string | null
 }
 
 /** A verdict row as stored (src/schemas/verdicts-schema.ts). */

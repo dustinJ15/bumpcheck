@@ -4,11 +4,31 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { build, type ResolvedConfig } from 'vite'
 import { prerender } from './prerender'
+import { EXAMPLE_PROJECT_ID } from './src/config'
+import { render as renderPublicPage } from './src/prerender-entry'
 
 vi.mock('vite', async (original) => ({
   ...await original<typeof import('vite')>(),
   build: vi.fn(),
 }))
+
+// The landing page is static: it may not use a data hook or an auth hook.
+// Every export of the SDK's client entry is replaced by a function that
+// throws, so calling any of them (useQuery, useUser, useAuth, AuthOverlay...)
+// while the landing page renders fails the test below. Importing is allowed:
+// src/constants.ts re-exports the role names from it.
+vi.mock('deepspace', () => {
+  const refuse = (name: string) => () => {
+    throw new Error(`the landing page called deepspace.${name}; it must stay static`)
+  }
+  return new Proxy(
+    {},
+    {
+      has: () => true,
+      get: (_target, name) => (typeof name === 'string' && name !== 'then' ? refuse(name) : undefined),
+    },
+  )
+})
 
 const dirs: string[] = []
 afterEach(() => {
@@ -70,5 +90,37 @@ describe('prerender indexing policy', () => {
     }
     expect(readFileSync(join(client, 'robots.txt'), 'utf8')).toBe('User-agent: *\nAllow: /\n')
     expect(existsSync(join(client, 'sitemap.xml'))).toBe(false)
+  })
+})
+
+describe('landing page', () => {
+  // The real page through the real prerender entry: no build, no browser, no providers.
+  const html = renderPublicPage('/')
+
+  it('renders without a data hook or an auth hook, and says what bumpcheck does in one sentence', () => {
+    expect(html).toContain('data-testid="static-landing"')
+    const sentences = html.match(/<p data-testid="landing-pitch"[^>]*>([^<]+)<\/p>/)
+    expect(sentences, 'the landing page has one pitch sentence').not.toBeNull()
+    const pitch = sentences![1]
+    expect(pitch).toMatch(/dependenc/i)
+    expect(pitch).toMatch(/break/i)
+    // One sentence: a single full stop, at the end.
+    expect(pitch.trim().endsWith('.')).toBe(true)
+    expect(pitch.trim().slice(0, -1)).not.toContain('. ')
+  })
+
+  it('is bumpcheck, not the scaffold placeholder', () => {
+    expect(html).not.toContain('A DeepSpace app with a static front door')
+    expect(html).not.toContain('real-time collaborative app')
+  })
+
+  it('links to the public example report, whose id comes from the one constant', () => {
+    expect(EXAMPLE_PROJECT_ID).toMatch(/\S/)
+    expect(html).toContain(`href="/share/${EXAMPLE_PROJECT_ID}"`)
+  })
+
+  it('offers sign-in with GitHub and with Google as plain links, so nothing runs until one is pressed', () => {
+    expect(html).toContain('href="/api/auth/social-redirect?provider=github"')
+    expect(html).toContain('href="/api/auth/social-redirect?provider=google"')
   })
 })

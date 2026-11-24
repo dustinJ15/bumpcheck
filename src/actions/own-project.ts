@@ -14,6 +14,7 @@
 
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { DependencyResult, ScanStatus, Verdict } from '../core/model'
+import { readVisibility, type Visibility } from '../core/public-report'
 import { readJson } from '../lib/json'
 
 /** The parts of a project row the project-page actions use. */
@@ -22,6 +23,8 @@ export interface OwnProject {
   dependencies: DependencyResult[]
   scanStatus: ScanStatus
   reviewedKeys: string[]
+  /** The owner's sharing choice. Private unless the row says "public". */
+  visibility: Visibility
   /** ISO times, null when never set. */
   lastScanRequestedAt: string | null
   lastOpenedAt: string | null
@@ -56,6 +59,7 @@ export async function loadOwnProject(
       dependencies: readJson<DependencyResult[]>(data.dependencies) ?? [],
       scanStatus: (typeof data.scanStatus === 'string' ? data.scanStatus : 'idle') as ScanStatus,
       reviewedKeys: readJson<string[]>(data.reviewedKeys) ?? [],
+      visibility: readVisibility(data.visibility) ?? 'private',
       lastScanRequestedAt: timeText(data.lastScanRequestedAt),
       lastOpenedAt: timeText(data.lastOpenedAt),
       nextDueAt: timeText(data.nextDueAt),

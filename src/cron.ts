@@ -29,6 +29,7 @@ import type { Env } from '../worker'
 import { SCHEDULE } from './config'
 import { runScheduleTick } from './engine/schedule'
 import { ownerActionTools } from './server/action-routes'
+import { syncPublicReport } from './server/public-report'
 import { enqueueScan } from './server/scan-queue'
 import { RecordRoomStore, systemClock } from './services/record-room-store'
 
@@ -39,13 +40,18 @@ export const tasks: CronTask[] = [{ name: DAILY_SCANS_TASK, intervalMinutes: SCH
 export async function runTask(name: string, env: Env): Promise<void> {
   if (name !== DAILY_SCANS_TASK) throw new Error(`Unknown scheduled task: ${name}`)
 
+  const tools = ownerActionTools(env)
   const result = await runScheduleTick({
-    store: new RecordRoomStore(ownerActionTools(env)),
+    store: new RecordRoomStore(tools),
     clock: systemClock,
     enqueueScan: async (projectId) => {
       // A scheduled scan is a full scan (never on-demand), so it may alert.
       await enqueueScan(env, { projectId, onDemand: false }, 'schedule')
     },
   })
+  // A stalled scan was just marked as ended on its project row. No job will
+  // finish for it, so its public report (if the project is public) is brought
+  // up to date here, the way the scan job does when a scan ends normally.
+  for (const projectId of result.stalled) await syncPublicReport(tools, projectId).catch(() => {})
   console.info(`[cron] ${name}: enqueued ${result.enqueued.length}, stalled ${result.stalled.length}`)
 }

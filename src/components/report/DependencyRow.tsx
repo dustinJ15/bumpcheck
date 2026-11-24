@@ -1,9 +1,13 @@
 /**
- * One dependency on the project page: its name, the version jump, the state
- * it is in, the verdict when there is one, and the actions that apply.
+ * One dependency in a report: its name, the version jump, the state it is
+ * in, the verdict when there is one, and the actions that apply.
  *
  * What state a dependency is in, and where it is listed, is decided in
  * src/core/report.ts. This file only draws a row for a state.
+ *
+ * The owner's project page passes `onAction`, and the row shows the buttons
+ * that apply. The public view passes none, and the row has no buttons: they
+ * are not rendered at all, so there is nothing to un-hide.
  */
 
 import { useState, type ReactNode } from 'react'
@@ -15,6 +19,8 @@ import { formatTime } from '@/lib/records'
 
 /** The server actions a row can ask for. The page supplies the function that calls them. */
 export type RowAction = 'check-dependency' | 'retry-verdict' | 'mark-reviewed' | 'undo-reviewed'
+
+export type RowActionHandler = (action: RowAction, params: { packageName: string; verdictKey?: string }) => Promise<void>
 
 const STATE_BADGE: Record<RowState, { label: string; variant: BadgeProps['variant'] }> = {
   breaking: { label: 'Breaking', variant: 'destructive' },
@@ -49,16 +55,18 @@ export function DependencyRow(props: {
   scanRunning: boolean
   /** This dependency is the one being read right now. */
   beingRead: boolean
-  onAction: (action: RowAction, params: { packageName: string; verdictKey?: string }) => Promise<void>
+  /** Sends a button press to a server action. Left out on the public view, which is read-only. */
+  onAction?: RowActionHandler
 }) {
-  const { row, reviewed, scanRunning, beingRead } = props
+  const { row, reviewed, scanRunning, beingRead, onAction } = props
   const { dependency, verdict, state } = row
   const [working, setWorking] = useState(false)
   const badge = STATE_BADGE[state]
 
   async function run(action: RowAction) {
+    if (!onAction) return
     setWorking(true)
-    await props.onAction(action, { packageName: dependency.name, verdictKey: dependency.verdictKey })
+    await onAction(action, { packageName: dependency.name, verdictKey: dependency.verdictKey })
     setWorking(false)
   }
 
@@ -83,28 +91,30 @@ export function DependencyRow(props: {
           <Versions dependency={dependency} />
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {state === 'not-read' && (
-            <Button size="sm" variant="outline" loading={working || beingRead} disabled={scanRunning} onClick={() => run('check-dependency')}>
-              Check this one
-            </Button>
-          )}
-          {state === 'failed' && (
-            <Button size="sm" variant="outline" loading={working || beingRead} disabled={scanRunning} onClick={() => run('retry-verdict')}>
-              Retry
-            </Button>
-          )}
-          {!reviewed && isReviewable(row) && (
-            <Button size="sm" variant="outline" loading={working} onClick={() => run('mark-reviewed')}>
-              Mark as reviewed
-            </Button>
-          )}
-          {reviewed && (
-            <Button size="sm" variant="outline" loading={working} onClick={() => run('undo-reviewed')}>
-              Undo
-            </Button>
-          )}
-        </div>
+        {onAction && (
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {state === 'not-read' && (
+              <Button size="sm" variant="outline" loading={working || beingRead} disabled={scanRunning} onClick={() => run('check-dependency')}>
+                Check this one
+              </Button>
+            )}
+            {state === 'failed' && (
+              <Button size="sm" variant="outline" loading={working || beingRead} disabled={scanRunning} onClick={() => run('retry-verdict')}>
+                Retry
+              </Button>
+            )}
+            {!reviewed && isReviewable(row) && (
+              <Button size="sm" variant="outline" loading={working} onClick={() => run('mark-reviewed')}>
+                Mark as reviewed
+              </Button>
+            )}
+            {reviewed && (
+              <Button size="sm" variant="outline" loading={working} onClick={() => run('undo-reviewed')}>
+                Undo
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <StateNote row={row} />

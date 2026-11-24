@@ -12,7 +12,8 @@
  *      of outbound calls is used.
  *   3. If it says "continue" (budget used, or a failed tick being retried),
  *      save the checkpoint with `ctx.continue`; the room calls back later.
- *   4. If it says "finish", return a small summary.
+ *   4. If it says "finish", bring the project's public report up to date
+ *      (only a public project has one) and return a small summary.
  *
  * The handler does not throw for a failed scan: the engine layer has already
  * written the failure to the project row, where the user sees it, and
@@ -30,6 +31,7 @@ import type { Job, JobContext } from 'deepspace/worker'
 import type { Env } from '../worker'
 import { runScanJobRun, startScanCheckpoint, type ScanCheckpoint } from './engine/scan-job'
 import { ownerActionTools } from './server/action-routes'
+import { syncPublicReport } from './server/public-report'
 import { SCAN_JOB_TYPE, type ScanJobPayload } from './server/scan-queue'
 import { buildScanServices } from './services/wire'
 
@@ -48,7 +50,8 @@ async function runScanJob(job: Job, ctx: JobContext, env: Env): Promise<unknown>
     // A bug in server code, not something a retry can fix: end the job here.
     return { outcome: 'failed', reason: 'scan job payload must be { projectId: string, onDemand: boolean }' }
   }
-  const services = buildScanServices(env, ownerActionTools(env))
+  const tools = ownerActionTools(env)
+  const services = buildScanServices(env, tools)
 
   // `resumeFrom` is the checkpoint this handler saved on its previous run.
   const checkpoint =
@@ -63,6 +66,11 @@ async function runScanJob(job: Job, ctx: JobContext, env: Env): Promise<unknown>
     ctx.continue(run.checkpoint, { afterMs: run.afterMs })
     return
   }
+  // The scan or check has ended, however it ended. If the project is public,
+  // its public report is a copy and now needs writing again; if it is
+  // private, this makes sure there is none. A failure here must not fail the
+  // job: the copy is only stale, and the next scan that ends writes it again.
+  await syncPublicReport(tools, payload.projectId).catch(() => {})
   // The job's result, for the owner's eyes in the job room. Users read the project row.
   return { outcome: run.outcome, reason: run.reason, report: run.report }
 }

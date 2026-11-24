@@ -1,8 +1,9 @@
 /**
  * The scan status of a project in words: what is happening now, or how the
  * last scan ended. Read from the project row, which the scan job keeps up
- * to date (users cannot watch the job room). Used by the projects list and
- * the project page.
+ * to date (users cannot watch the job room). Used by the projects list, the
+ * project page, and the public view, which passes the few fields its public
+ * report has.
  */
 
 import { Badge } from '@/components/ui'
@@ -10,7 +11,7 @@ import type { ScanProgress } from '@/core/model'
 import { readJson } from '@/lib/json'
 import { formatTime, type ProjectRow } from '@/lib/records'
 
-export function ScanStatusLine({ project }: { project: ProjectRow }) {
+export function ScanStatusLine({ project }: { project: Pick<ProjectRow, 'scanStatus' | 'scanProgress' | 'scanError' | 'lastScanAt'> }) {
   const progress = readJson<ScanProgress>(project.scanProgress)
 
   switch (project.scanStatus) {

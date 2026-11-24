@@ -1,5 +1,5 @@
 /**
- * The five bumpcheck collections, checked with the SDK's own permission
+ * The bumpcheck collections, checked with the SDK's own permission
  * functions (the ones the record room enforces), so the rules below are the
  * rules the server applies.
  */
@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { canCreate, canDelete, canRead, canUpdate, lintSchemas } from 'deepspace/worker'
 import type { CollectionSchema } from 'deepspace/schema'
+import { PUBLIC_REPORT_COLUMNS } from './core/public-report'
 import { schemas } from './schemas'
 
 const ROLES = ['viewer', 'member', 'admin'] as const
@@ -22,7 +23,7 @@ function row(data: Record<string, unknown>) {
   return { data, createdBy: 'app-owner', recordId: 'r1' }
 }
 
-const BUMPCHECK = ['projects', 'verdicts', 'alerts', 'usage', 'attempts']
+const BUMPCHECK = ['projects', 'publicReports', 'verdicts', 'alerts', 'usage', 'attempts']
 
 describe('bumpcheck collections', () => {
   it('are all registered', () => {
@@ -51,7 +52,6 @@ describe('projects', () => {
 
   it('carries the user id in the owner field and is private by default', () => {
     expect(s.ownerField).toBe('userId')
-    expect(s.visibilityField).toBe('visibility')
     expect(s.columns.find((c) => c.name === 'visibility')?.default).toBe('private')
   })
 
@@ -64,13 +64,33 @@ describe('projects', () => {
     expect(canRead(s, 'viewer', alicePrivate, 'anon-1')).toBe(false)
   })
 
-  it('shows a public project to other members and signed-out visitors', () => {
-    expect(canRead(s, 'member', alicePublic, 'bob')).toBe(true)
-    expect(canRead(s, 'viewer', alicePublic, 'anon-1')).toBe(true)
+  // Ticket 05: a project row carries its owner's id and the platform sends
+  // whole rows, so nobody but the owner reads one, public or not. What the
+  // public sees is the separate `publicReports` collection.
+  it('is owner-only even when public: the row holds the owner id, so nobody else reads it', () => {
+    expect(canRead(s, 'member', alicePublic, 'alice')).toBe(true)
+    for (const role of ROLES) {
+      expect(canRead(s, role, alicePublic, 'bob')).toBe(false)
+      expect(canRead(s, role, alicePublic, 'anon-1')).toBe(false)
+    }
   })
 
   it('has email alerts off by default', () => {
     expect(s.columns.find((c) => c.name === 'alertsEnabled')?.default).toBe(0)
+  })
+})
+
+describe('publicReports', () => {
+  const s = schema('publicReports')
+
+  it('is readable by every role, signed-out visitors included', () => {
+    for (const role of ROLES) expect(canRead(s, role, row({ projectId: 'p1' }), 'anyone')).toBe(true)
+  })
+
+  it('has exactly the columns a public report holds, and none that names a user', () => {
+    expect(s.columns.map((c) => c.name)).toEqual([...PUBLIC_REPORT_COLUMNS])
+    expect(s.ownerField).toBeUndefined()
+    expect(s.columns.filter((c) => c.userBound)).toEqual([])
   })
 })
 
