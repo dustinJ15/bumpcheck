@@ -1149,3 +1149,9 @@ Running 13 tests using 1 worker
 
   13 passed (1.4m)
 ```
+
+**Supervisor note (2026-11-24).** Verified and accepted. Gate green on my own run on the clean
+tree at `e719b84` (654 unit and engine, 6 smoke, 2 API, 57 signed-in). Mutation: the `users`
+roster set back to the platform default turns the schema test and the browser test red.
+Screenshots looked at, including 390 px; the five screens read as one light product. The
+`AGENTS.md` edit is kept.
