@@ -71,7 +71,8 @@ a time**.
 
 For each ticket:
 
-1. **Start a fresh worker** on `claude-fable-5-2` at medium effort with this prompt, filling in
+1. **Start a fresh worker** on `claude-opus-5-5` at medium effort (Dustin switched from Fable
+   to Opus on 2026-11-24, during ticket 06, when the Fable allowance ran out) with this prompt, filling in
    the ticket file (changed by Dustin on 2026-11-23 from `claude-opus-5-5` at high effort;
    ticket 01's worker had already started on Opus and was left running):
 

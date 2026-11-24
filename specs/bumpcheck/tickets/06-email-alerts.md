@@ -1361,3 +1361,13 @@ Running 13 tests using 1 worker
 
   13 passed (1.4m)
 ```
+
+**Supervisor note (2026-11-24).** Verified and accepted. The worker committed this ticket and
+then hit a usage limit before it could report, so this note rests on the commit alone. Gate
+green on my own run (633 unit and engine, 6 smoke, 2 API, 56 signed-in). Mutation check, my
+own, four rules, each turned a test red: HTML escaping, the test-send cap, one alert a day,
+and "never the same verdict twice". Token verification uses the platform's constant-time
+HMAC verify. Screenshots, the sample HTML and the text body looked at; the two bodies match.
+
+Note for the live check: it sends to the Alice test account's address, not to Dustin's inbox,
+so the `List-Unsubscribe` header cannot be confirmed by reading Dustin's mail.
