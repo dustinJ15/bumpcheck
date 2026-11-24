@@ -1,6 +1,6 @@
 # 08 — Deploy checkpoint
 
-**Status:** ready-for-human (no worker; supervisor and Dustin only)
+**Status:** done (by the supervisor, on Dustin's authority)
 
 **Who:** supervisor and Dustin only. **No worker is assigned to this ticket.**
 **Changes a page:** no · **Blocked by:** 07 · **Decisions:** 16, 17
@@ -987,3 +987,35 @@ limits needed: 150 AI calls a day is at most about 39 credits a day.
 (several verdicts were read from releases pages). The `List-Unsubscribe` header: the live
 check's email went to the Alice test account, which has no inbox, so it is still unverified.
 
+
+**Step 3, cost.** One verdict costs about US$0.0025. The live site's first scan of the example
+repo: 11 Claude calls, about US$0.026. Account total after every live check and the production
+scan: 19.29 of 500 credits used, 480.71 left. No limit needed retuning.
+
+**Step 4, the two unverified items, answered.**
+- The unauthenticated Releases fallback: refused once on the live site (typescript), shown as
+  "not read this time"; read fine for chalk, date-fns, express, eslint and others. Partly
+  reliable. A token in the secret store is left as Dustin's decision.
+- The email: a test email sent from the live site to dbj2297@gmail.com arrived from
+  `notifications@updates.app.space` with `List-Unsubscribe` (HTTPS link) and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, DKIM and SPF passing, and a
+  text/plain plus text/html body. The plain text carries the same content.
+
+**Step 5, deploy.** Merged `ralph/bumpcheck` into `main` by fast-forward and pushed both to
+GitHub. Deployed `b765fc2` with `npx deepspace deploy --no-push`; the first release claimed
+GitHub as the source. Redeployed `586292c` after setting `EXAMPLE_PROJECT_ID` (gate green on
+that tree first). Live URL: https://bumpcheck.app.space. Checked that no `.dev.vars` was
+uploaded with the static assets (every guessed path returns 404).
+
+**Step 6, live-site check** (signed in through Dustin's GitHub session in Chrome; Google asked
+for a phone prompt, so it was not used): added `dustinJ15/bumpcheck-example`, watched the scan
+finish (13 dependencies, 10 breaking, 1 unclear, 1 not read because GitHub refused its release
+notes); made it public; opened the share link signed out (read-only, no actions, no name,
+evidence `specs/bumpcheck/evidence/08/live-public-report.png`); set the landing page's example
+constant and redeployed; the landing link points at the report; sent a test email and used its
+unsubscribe link (confirmation page, one click, alerts off, the open settings tab updated live);
+a forged unsubscribe token gets 400. Alerts are left off on that project.
+
+**Step 7 and the stretch.** 480 credits remain. Tickets 09 and 10 (impact analysis) are not
+started: Dustin is away and asked for the project to be submitted before the deadline, so the
+core is submitted as it stands and the writeup lists the stretch as not built.

@@ -1,4 +1,8 @@
-# bumpcheck: writeup (draft)
+# bumpcheck: writeup
+
+Live: https://bumpcheck.app.space · Example report:
+https://bumpcheck.app.space/share/1795533371868_l31797 · Repository:
+https://github.com/dustinJ15/bumpcheck
 
 ## What it is
 
@@ -44,11 +48,17 @@ where it pays:
   150 AI calls a day app-wide (the owner is exempt from per-user limits, not from that ceiling),
   a 10-minute "scan now" cooldown, daily scans paused after 7 idle days.
 
-The live check (one real scan of the example repo plus one test email) cost 7.9 credits, about
-US$0.08: Claude 19 calls for about US$0.043 (about US$0.0022 a call), GitHub 16 calls, email one.
-At that rate the daily AI ceiling caps AI spend near US$0.33 a day.
-TODO(supervisor): update with the pre-deploy live check, run after the output cap was raised from
-1,500 to 3,500 tokens (ticket 06b).
+Measured, not estimated: one verdict costs about US$0.0025 (Claude Haiku through the platform).
+The first scan of the example repo on the live site made 11 Claude calls for 12 major upgrades
+(about US$0.026). At that rate the 150-call daily ceiling caps AI spend near US$0.40 a day. The
+whole build, including two paid live checks and the production scan, used 19.3 of the 500
+credits (US$0.19).
+
+The first paid live check found a real bug the fakes could not: 7 of 12 verdicts failed because
+long changelogs produced answers longer than the 1,500-token output cap. The fix bounds the answer
+in the prompt (8 changes at most, short fields, with headroom below what the validator accepts),
+raises the cap to 3,500 tokens with the arithmetic in a comment, tells a cut-off answer apart from
+bad JSON, and retries a cut-off with a shorter request. The next live check read all 12.
 
 ## Platform facts found during the build
 
@@ -67,22 +77,48 @@ TODO(supervisor): update with the pre-deploy live check, run after the output ca
 
 A supervising Claude session ran a loop of fresh worker agents, one ticket each, from a spec and an
 interview ledger written with Dustin. The supervisor verified every ticket itself: it ran the gate
-(lint, type check, about 650 unit and engine tests, then browser tests against fake services),
+(lint, type check, about 650 unit and engine tests, then 65 browser tests against fake services),
 read the diff, looked at the screenshots, and ran a mutation check, deliberately breaking rules to
-prove a test goes red. From ticket 03 on, work was test-first with a red/green log. Workers ran on
-Claude Opus and Claude Fable. Tests never call paid services; the paid live check was run by hand.
+prove a test goes red (about 40 by the supervisor, many more by the workers themselves; the gaps
+they found were closed with new tests). From
+ticket 03 on, work was test-first with a red/green log. Workers ran on Claude Opus and Claude
+Fable. Tests never call paid services; the paid live check was run by hand at fixed points. The
+supervisor also deployed, ran the production check below and submitted, on Dustin's instruction.
+Every ticket, its completion note and evidence are in `specs/bumpcheck/` in the repository.
 
 ## What Dustin decided, verified or changed
 
-TODO(supervisor): fill from the ledger
+Dustin chose the idea and the scope, and set the product decisions in a design interview before
+any code was written (the ledger in `specs/bumpcheck/interview-ledger.md`, section A): public
+repos only; semver triage before AI; one shared verdict cache; changelog sources and "no text, no
+AI call"; a structured verdict with no confidence score; the budget limits; private-by-default
+public sharing; the daily schedule; and impact analysis as a stretch. He raised email alerts from
+"first to cut" to a primary feature, drawing on his own experience with email, and set its polish
+bar: never send the same news twice, HTML with a matching plain-text part, one-click unsubscribe
+without sign-in plus the `List-Unsubscribe` header, a test-send button and a send log. He
+approved the account setup (two test accounts, the example repo, the signing secret).
+
+During the build he changed three things: he approved changing verdict keys for `0.x` versions
+after a worker flagged that the decided key would share one verdict across different `0.x`
+minors; he required test-first development with proof, which became the red/green log and the
+supervisor's mutation check; and he moved the workers between models as allowances ran out.
+
+He did not personally click through the deployed app before submission. That check was done by
+the supervising session on his authority, signed in through his own GitHub session on the live
+site: the first scan of `dustinJ15/bumpcheck-example` (13 dependencies) read 11 of its 12 major
+upgrades, 10 breaking and 1 unclear, the twelfth not read because GitHub refused its release
+notes; the public report opened signed out with no actions and no name; a
+test email reached his Gmail with `List-Unsubscribe` and `List-Unsubscribe-Post` headers intact
+(DKIM and SPF passing); and its unsubscribe link turned alerts off in one click without sign-in.
 
 ## Known gaps and unfinished edges
 
 - The impact-analysis stretch (which breaking changes touch your code) is not built.
-- The live check's email went to a test account with no inbox, so the email's look in real mail
-  clients and the `List-Unsubscribe` header arriving are unverified.
-- A GitHub Releases request that GitHub refuses stores nothing and is asked again on every scan,
-  each time after one paid GitHub call.
+- The email was checked in Gmail only; other mail clients (Outlook, Apple Mail) were not tried.
+- GitHub's unauthenticated Releases API does refuse requests from the platform's network: on the
+  live site it refused once (typescript), which the page shows as "not read this time". A refused
+  request stores nothing and is asked again on every scan, each time after one paid GitHub call.
+  A token in the secret store would fix it; that was left as Dustin's decision.
 - A scan waiting in the job queue for over 30 minutes is treated as stalled; a full scan corrects
   itself when it runs, but a waiting "check this one" request is lost.
 - Two requests at the same instant can both pass a check (two "scan now" calls both enqueue);
