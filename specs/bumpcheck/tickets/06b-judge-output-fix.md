@@ -1093,3 +1093,10 @@ Running 13 tests using 1 worker
 
   13 passed (1.5m)
 ```
+
+**Supervisor note (2026-11-24).** Accepted. Mutation check, my own, five rules, each turned a
+test red: the cut-off check dropped; the shorter retry dropped; the output cap lowered back
+to 1,500; the prompt headroom removed (promptShare 1). Unit and engine tests green on my run
+(652). I did not rerun the browser suites for this ticket, which touches no page; they run
+in full in ticket 08's pre-deploy gate. Whether real Haiku answers now fit is for the next
+live check to show.
