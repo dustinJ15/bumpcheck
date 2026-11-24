@@ -43,6 +43,16 @@ No licence file.
 cache and semver-gated AI under a $5 budget); what the agent did. Leave "What Dustin verified
 himself" as an empty heading for Dustin. State only what is true of the code as it stands.
 
+**Added by the supervisor from ticket 05:**
+
+- Check what a signed-out visitor and another signed-in member receive if they ask the record
+  room for the `users` collection (the scaffold leaves it on the platform default). Nobody but
+  the user themself and the app owner should be able to read another user's name or email. If
+  the schema can restrict it without breaking sign-in or the nav's own-identity chip, restrict
+  it and add a browser test; if it cannot, say exactly what is exposed in the report.
+- The scaffold's "Your account" `/settings` page still sits in the nav beside the per-project
+  settings. Rename or regroup so the two are not confused.
+
 ## Tests required
 
 No new behaviour, so no new rules to protect. All existing tests must still pass. Update

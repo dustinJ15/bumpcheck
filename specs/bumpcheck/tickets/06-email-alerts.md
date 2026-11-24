@@ -39,6 +39,9 @@ news twice, and can leave with one click.
 6. **Server actions:** set a project's alert setting (off by default); send a test email (3 per
    user per day, logged as kind "test"); delete a project, which removes it and its alert log
    and leaves shared verdicts.
+   **From ticket 05:** deleting a public project must also remove its public report
+   (`src/server/public-report.ts`), or the report stays readable at its share link. Test it:
+   after delete, the share link shows "not available".
 7. **Project settings page:** alert switch, "send me a test" button with its remaining count,
    the send log (time, kind, outcome, failure reason), and delete with a confirmation. The
    public switch from ticket 05 stays.

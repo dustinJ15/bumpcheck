@@ -948,3 +948,16 @@ Running 13 tests using 1 worker
 
   13 passed (1.4m)
 ```
+
+**Supervisor note (2026-11-24).** Verified and accepted. Gate green on my own run (460 unit and
+engine, 6 smoke, 2 API, 47 signed-in). Mutation check, my own, five rules, each turned a test
+red: viewers reading all projects; private projects still published; no re-read after the
+write; public reports writable by members; the report written as the caller (browser, the
+wire test found the owner's id). Screenshots looked at.
+
+Decided: the `createdBy` on public rows is the app owner's id, the same on every public row.
+That is accepted. It does not say whose project a report is, and when the app owner shares his
+own project it names only the app's owner, who is public as its author anyway.
+
+Carried forward: ticket 06's delete must remove the public report; ticket 07 checks what a
+signed-out visitor can read from the `users` collection.
