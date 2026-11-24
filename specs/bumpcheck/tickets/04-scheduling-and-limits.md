@@ -924,3 +924,16 @@ Running 13 tests using 1 worker
 
   13 passed (1.4m)
 ```
+
+**Supervisor note (2026-11-24).** Verified and accepted. Gate green on my own run (439 unit and
+engine, 6 smoke, 2 API, 37 signed-in). Mutation check, my own, nine rules, each turned a test
+red: cooldown, add-attempt cap, stall time and due time off by one; schedule ignoring idle,
+picking active scans, ignoring its bound; scan now allowed while scanning; cron room open to
+members (browser). All four notice screenshots looked at.
+
+Open after this ticket, none blocking: a job waiting in the queue over 30 minutes looks
+stalled; two scan-now requests at the same instant can both enqueue; a refused Releases
+request costs one paid GitHub call per affected major on every scan; `isNotFound` in
+`src/services/github-source-host.ts` matches any error text containing "not found", which
+needs the live check's real error shapes before it can be tightened safely; the scheduled
+task runs once right after it is first armed (after a deploy's first request).

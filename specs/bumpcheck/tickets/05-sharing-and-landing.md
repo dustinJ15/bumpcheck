@@ -30,6 +30,14 @@ email. The owner field is needed for owner reads, so check what a viewer-role cl
 receives and keep identity out of it. If the platform cannot hide the owner field from
 viewers, stop and report rather than work around it.
 
+**Supervisor decision (2026-11-24, under Dustin's "use your discretion" instruction):** if the
+platform cannot keep the owner field out of what a viewer receives, do not stop. Publish
+through a separate collection instead: a public-report row holding only what the public page
+shows (repo, dependencies, scan time and status, no user id, no alert or review state),
+written and removed by server code when the project's visibility changes and refreshed when a
+scan finishes. It is readable by every role; the projects collection then stays owner-only.
+The public page reads only that collection. Verdicts are already public.
+
 **"Not available" page:** a signed-out visitor or another member on a private or missing
 project's link gets a clear page, not a blank screen. Do not reveal whether the project exists.
 
