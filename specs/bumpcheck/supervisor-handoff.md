@@ -161,6 +161,18 @@ and must submit before 2026-11-25 23:59 Eastern even if the stretch or polish is
 a deployed core with an honest writeup beats a late submission. Dustin, 2026-11-24: "i give you authority to do whatever
 is needed" to get the project deployed and submitted.
 
+### The task page, as read on 2026-11-24 (Chrome is signed in as Dustin)
+
+The form has three fields: "Deployed app URL" (required), "Repository" (required) and
+"Writeup" (free text, placeholder "What you built, which primitives you used, where the agent
+helped"), then "Submit task". Progress saves automatically. What graders look for, in short:
+a sensible scope; the deployed result works on its important path, with unfinished edges
+explained honestly; technical depth through working flows, with the integrations used
+explained; understandable code, protected secrets, platform primitives used rather than
+reinvented; a writeup that explains the main tradeoff, what the agent did, and what the
+applicant verified or changed. The page's "helpful project bar" asks for at least three
+DeepSpace integrations (bumpcheck: GitHub, Claude, email).
+
 ## Ticket 08: stop here
 
 Ticket 08 has no worker. Do its step 1 (gate on a clean tree at the commit to be deployed, paste the output) and step 2
