@@ -173,6 +173,15 @@ reinvented; a writeup that explains the main tradeoff, what the agent did, and w
 applicant verified or changed. The page's "helpful project bar" asks for at least three
 DeepSpace integrations (bumpcheck: GitHub, Claude, email).
 
+### Submitted (2026-11-24, 8:30 AM Mountain)
+
+Submitted on https://careers.deep.space/task through Claude in Chrome, signed in as Dustin. The
+page shows "Submitted Tue, Nov 24, 8:30 AM" and kept every field after a reload. Deployed app
+URL: https://bumpcheck.app.space. Repository: https://github.com/dustinJ15/bumpcheck. Writeup:
+the text in `specs/bumpcheck/submission-note.txt` (378 words), which points to `WRITEUP.md`
+for the full account. The form can still be edited ("Save changes") until the deadline.
+Tickets 09 and 10 were not started: they needed Dustin's go, and he was away.
+
 ## Ticket 08: stop here
 
 Ticket 08 has no worker. Do its step 1 (gate on a clean tree at the commit to be deployed, paste the output) and step 2

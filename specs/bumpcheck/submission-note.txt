@@ -1,0 +1,11 @@
+bumpcheck tells you which dependency upgrades in a JavaScript project will break. Add a public GitHub repo: it reads package.json, sorts every npm dependency by how far behind it is, and for major upgrades has Claude read the changelog and return a verdict (breaking, safe or unclear) with each change and what to do, linked to its source. It re-scans daily, can email you about new breaking upgrades (one-click unsubscribe), lets you mark verdicts reviewed, and shares a read-only public report. Example: https://bumpcheck.app.space/share/1795533371868_l31797
+
+DeepSpace used: records with owner-only rules and server actions for every write; the job room for resumable scans (locked to the owner role); the cron room for the hourly tick (locked at its route); the GitHub, Claude (Haiku, with input and output caps) and email integrations, all owner-billed and server-only; the secret store for the unsubscribe signing key.
+
+Main tradeoff: the whole app runs on $5 of credits. So verdicts are a shared cache keyed by package and version range, semver triage decides where AI is spent (majors only, minors on request, no changelog means no call), and every limit sits in one config module, including a 150-call daily ceiling. Measured: about $0.0025 per verdict; the whole build used $0.19.
+
+What the agent did: a supervising Claude session ran fresh worker agents one ticket at a time from a spec and an interview ledger, and verified each itself with the gate (about 650 unit and engine tests, 65 browser tests against fake services), the diff, screenshots and mutation checks. A paid live check caught a real bug the fakes could not (long answers cut off by the output cap); it was fixed and rechecked. The agent also deployed, checked the live site and submitted, on my instruction.
+
+What I did: chose the idea and scope and made the product decisions in a design interview (the ledger in the repo), made email a primary feature and set its bar, approved the 0.x verdict-key change, and required test-first work with proof. I did not personally click through the deployed app before this submission; the agent's production check is recorded in the repo.
+
+Not built or not perfect: the impact-analysis stretch; GitHub sometimes refuses the unauthenticated Releases API; a few same-instant races. Full writeup: WRITEUP.md in the repo.
