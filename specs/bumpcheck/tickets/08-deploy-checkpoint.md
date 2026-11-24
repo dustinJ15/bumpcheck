@@ -36,6 +36,13 @@ Use Node 24 (`nvm use`) for every command.
    unsubscribe link.
 7. **Dustin:** confirm remaining credits leave room for the stretch and the grading period.
 
+**Supervisor notes on the deploy command (2026-11-24, from `deploy --help` and `status`):**
+`deepspace deploy` syncs DeepSpace source by default (`--push`). Always pass `--no-push`, so
+nothing is pushed to the platform's cloud repo. `deepspace status` reports "Source unclaimed ·
+first release claims GitHub (dustinj15/bumpcheck) from this checkout's remote, permanently",
+which matches the spec; deploy from `main` after the merge, on a clean tree. Deploy builds
+the current working tree.
+
 ## Done means
 
 - The full pasted output of `npm run gate` from the deployed commit, all green.
