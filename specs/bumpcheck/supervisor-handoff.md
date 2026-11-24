@@ -155,7 +155,10 @@ https://careers.deep.space/task, post the deployed app URL, the repository
 (https://github.com/dustinJ15/bumpcheck, public, default branch `main`) and a short writeup.
 The supervisor submits it through Claude in Chrome once the core is deployed and verified,
 with the writeup drawn from `WRITEUP.md`. The writeup states only what is true, including
-what was not verified. A live coding session follows if the submission moves forward.
+what was not verified. A live coding session follows if the submission moves forward. Dustin, 2026-11-24: "submit when done. I wont be back. we
+must sumbit before the cutoff time". So the supervisor submits without further confirmation,
+and must submit before 2026-11-25 23:59 Eastern even if the stretch or polish is unfinished:
+a deployed core with an honest writeup beats a late submission.
 
 ## Ticket 08: stop here
 
