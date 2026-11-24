@@ -8,7 +8,9 @@
  * Steps, cheapest first, so a refused request costs nothing:
  *   1. Load the caller's own projects.
  *   2. Run the add-project check (src/engine/add-project.ts): input, duplicate,
- *      project limit, then the repo itself. Each refusal has its own message.
+ *      project limit, the daily cap on attempts, then the repo itself. Each
+ *      refusal has its own message. A request that reaches GitHub is counted
+ *      as an attempt first (`attemptsOf` below).
  *   3. Create the project row, owned by the caller, private, status "queued".
  *   4. Count the caller's projects again, and take the row back if requests
  *      sent at the same time put them over the limit.
@@ -18,11 +20,13 @@
  * this is the only way a project comes to exist.
  */
 
-import type { ActionHandler } from 'deepspace/worker'
+import type { ActionHandler, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
+import { LIMITS } from '../config'
 import type { ScanStatus } from '../core/model'
-import { mayAddProject } from '../core/limits'
-import { checkNewProject, duplicateMessage, PROJECT_LIMIT_MESSAGE } from '../engine/add-project'
+import { mayAddProject, utcDay } from '../core/limits'
+import { checkNewProject, duplicateMessage, PROJECT_LIMIT_MESSAGE, type AddAttempts, type NewProjectCheck } from '../engine/add-project'
+import { queuedFields } from '../engine/scan'
 import { enqueueScan } from '../server/scan-queue'
 import { buildSourceHost } from '../services/wire'
 
@@ -31,18 +35,27 @@ export const addProject: ActionHandler<Env> = async ({ userId, params, tools, en
   if (!mine.success) return { success: false, error: 'Could not load your projects. Try again.' }
 
   const isAppOwner = userId === env.OWNER_USER_ID
-  const check = await checkNewProject(
-    {
-      repoInput: params.repo,
-      isAppOwner,
-      existing: mine.data.records.map((record) => ({ owner: record.data.repoOwner, repo: record.data.repoName })),
-    },
-    buildSourceHost(env, tools),
-  )
+  const nowMs = Date.now()
+  let check: NewProjectCheck
+  try {
+    check = await checkNewProject(
+      {
+        repoInput: params.repo,
+        isAppOwner,
+        existing: mine.data.records.map((record) => ({ owner: record.data.repoOwner, repo: record.data.repoName })),
+        now: nowMs,
+      },
+      buildSourceHost(env, tools),
+      attemptsOf(tools, userId, utcDay(nowMs)),
+    )
+  } catch {
+    // The attempts could not be counted, or GitHub could not be reached.
+    // Either way nothing was added.
+    return { success: false, error: 'Could not check the repository. Try again.' }
+  }
   if (!check.ok) return { success: false, error: check.message, code: check.refusal }
 
-  const now = new Date().toISOString()
-  const scanStatus: ScanStatus = 'queued'
+  const now = new Date(nowMs).toISOString()
   const created = await tools.create('projects', {
     userId,
     visibility: 'private',
@@ -51,7 +64,8 @@ export const addProject: ActionHandler<Env> = async ({ userId, params, tools, en
     repoOwner: check.repo.owner,
     repoName: check.repo.repo,
     defaultBranch: check.defaultBranch,
-    scanStatus,
+    // Queued for its first scan. This request starts the "scan now" cooldown.
+    ...queuedFields(nowMs),
     lastScanRequestedAt: now,
     lastOpenedAt: now,
   })
@@ -87,4 +101,28 @@ export const addProject: ActionHandler<Env> = async ({ userId, params, tools, en
   }
 
   return { success: true, data: { projectId } }
+}
+
+/**
+ * The caller's add-project attempts for one UTC day, kept as one row each in
+ * the server-only `attempts` collection. Counting rows after writing one is
+ * what makes the cap hold for requests sent at the same moment. Throws if
+ * the rows cannot be read or written: an attempt that cannot be counted is
+ * not allowed through.
+ */
+function attemptsOf(tools: ActionTools, userId: string, day: string): AddAttempts {
+  async function countToday(): Promise<number> {
+    // Two past the cap is enough to know the answer, however many rows there are.
+    const rows = await tools.query('attempts', { where: { userId, day }, limit: LIMITS.addAttemptsPerUserPerDay + 2 })
+    if (!rows.success) throw new Error(`could not count add attempts: ${rows.error}`)
+    return rows.data.records.length
+  }
+  return {
+    countToday,
+    async record() {
+      const created = await tools.create('attempts', { userId, day })
+      if (!created.success) throw new Error(`could not record an add attempt: ${created.error}`)
+      return countToday()
+    },
+  }
 }

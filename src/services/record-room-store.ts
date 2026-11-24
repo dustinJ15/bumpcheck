@@ -28,22 +28,17 @@ export class RecordRoomStore implements RecordStore {
       if (result.error.startsWith('Record not found')) return null
       throw new Error(`could not read project ${projectId}: ${result.error}`)
     }
-    const data = result.data.record.data
-    return {
-      id: projectId,
-      userId: String(data.userId),
-      repoOwner: String(data.repoOwner),
-      repoName: String(data.repoName),
-      defaultBranch: text(data.defaultBranch),
-      dependencies: json(data.dependencies, []),
-      scanStatus: (text(data.scanStatus) ?? 'idle') as ProjectRecord['scanStatus'],
-      scanProgress: json(data.scanProgress, null),
-      scanReport: json(data.scanReport, null),
-      scanError: text(data.scanError),
-      lastScanAt: text(data.lastScanAt),
-      nextDueAt: text(data.nextDueAt),
-      checkRequests: json(data.checkRequests, []),
-    }
+    return toProjectRecord(projectId, result.data.record.data)
+  }
+
+  /**
+   * Every project row. No `limit` is passed, and server-side queries
+   * without one return every row. Fine at this app's size (a handful of
+   * projects per user); a much larger app would page through them.
+   */
+  async listProjects(): Promise<ProjectRecord[]> {
+    const result = unwrap(await this.tools.query('projects'), 'list projects')
+    return result.records.map((record) => toProjectRecord(record.recordId, record.data))
   }
 
   async updateProject(projectId: string, changes: Partial<ProjectScanFields>): Promise<void> {
@@ -120,6 +115,26 @@ export class RecordRoomStore implements RecordStore {
   ): Promise<{ recordId: string; data: Record<string, unknown> } | null> {
     const result = unwrap(await this.tools.query(collection, { where, limit: 1 }), `query ${collection}`)
     return result.records[0] ?? null
+  }
+}
+
+function toProjectRecord(projectId: string, data: Record<string, unknown>): ProjectRecord {
+  return {
+    id: projectId,
+    userId: String(data.userId),
+    repoOwner: String(data.repoOwner),
+    repoName: String(data.repoName),
+    defaultBranch: text(data.defaultBranch),
+    dependencies: json(data.dependencies, []),
+    scanStatus: (text(data.scanStatus) ?? 'idle') as ProjectRecord['scanStatus'],
+    scanProgress: json(data.scanProgress, null),
+    scanReport: json(data.scanReport, null),
+    scanError: text(data.scanError),
+    lastScanAt: text(data.lastScanAt),
+    nextDueAt: text(data.nextDueAt),
+    scanHeartbeatAt: text(data.scanHeartbeatAt),
+    lastOpenedAt: text(data.lastOpenedAt),
+    checkRequests: json(data.checkRequests, []),
   }
 }
 

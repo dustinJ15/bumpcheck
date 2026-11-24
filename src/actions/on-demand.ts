@@ -23,6 +23,7 @@ import type { ActionHandler } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import type { ScanStatus } from '../core/model'
 import { checkOnDemandRequest, type OnDemandKind } from '../core/requests'
+import { queuedFields } from '../engine/scan'
 import { enqueueScan } from '../server/scan-queue'
 import { loadOwnProject, loadVerdict, PROJECT_NOT_FOUND, VERDICT_UNREADABLE, type StoredVerdict } from './own-project'
 
@@ -46,9 +47,7 @@ function onDemandAction(kind: OnDemandKind): ActionHandler<Env> {
     if (dependency === undefined) return PROJECT_NOT_FOUND
 
     const queued = await tools.update('projects', project.id, {
-      scanStatus: 'queued' satisfies ScanStatus,
-      scanProgress: null,
-      scanError: null,
+      ...queuedFields(Date.now()),
       checkRequests: [dependency.name],
     })
     if (!queued.success) return { success: false, error: 'Could not start the check. Try again.' }

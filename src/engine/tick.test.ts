@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { LIMITS } from '../config'
 import { buildFakeWorld, FAKE_JUDGE_DELAY_MS, FAKE_OWNER, FAKE_PACKAGE_NAMES } from '../services/fake-world'
 import { FakeClock, MemoryRecordStore } from '../services/fakes'
 import type { RecordStore } from '../services/types'
@@ -77,6 +78,7 @@ describe('runScanTick', () => {
     // A store that "cancels the job" at the moment the results are written.
     const watchedStore: RecordStore = {
       getProject: (id) => store.getProject(id),
+      listProjects: () => store.listProjects(),
       updateProject: async (id, changes) => {
         await store.updateProject(id, changes)
         if (changes.scanStatus === 'done') cancelled = true
@@ -184,6 +186,48 @@ describe('the fake world behind the local test server', () => {
     const tick = await runScanTick(services, startScan(PROJECT), { outboundCallBudget: 1000 })
     expect(tick.stopped).toBe('done')
     expect(store.projects.get(PROJECT)?.dependencies[0]).toMatchObject({ triage: 'minor' })
+  })
+
+  // The states ticket 04's notices need.
+  function worldFor(repoName: string) {
+    const store = new MemoryRecordStore()
+    store.seedProject({ id: PROJECT, userId: 'user-1', repoOwner: FAKE_OWNER, repoName })
+    const services: ScanServices = { ...buildFakeWorld({ sleep: async () => {} }), store, clock: new FakeClock(), alertHook: noAlerts }
+    return { services, store }
+  }
+
+  it('has a repo with more majors than one scan may read, so a scan stops at its limit', async () => {
+    const { services, store } = worldFor('many')
+    const tick = await runScanTick(services, startScan(PROJECT), { outboundCallBudget: 1000 })
+
+    expect(tick.stopped).toBe('done')
+    const project = store.projects.get(PROJECT)
+    expect(project?.dependencies).toHaveLength(LIMITS.newVerdictsPerScan + 2)
+    expect(project?.scanReport).toEqual({ judged: LIMITS.newVerdictsPerScan, deferredByScanCap: 2, deferredByDailyCeiling: 0 })
+
+    // The next scan reads the two that were left.
+    await runScanTick(services, startScan(PROJECT), { outboundCallBudget: 1000 })
+    expect(store.projects.get(PROJECT)?.scanReport).toEqual({ judged: 2, deferredByScanCap: 0, deferredByDailyCeiling: 0 })
+  })
+
+  it('has a repo whose scan cannot finish: a changelog its major upgrade needs cannot be fetched', async () => {
+    const { services, store } = worldFor('outage')
+    const tick = await runScanTick(services, startScan(PROJECT), { outboundCallBudget: 1000 })
+
+    expect(tick).toMatchObject({ stopped: 'error', error: 'GitHub answered 503 (fake)' })
+    expect(tick.state.step).toBe('judge')
+    expect(store.projects.get(PROJECT)?.scanStatus).toBe('scanning')
+  })
+
+  it('has a repo whose release notes GitHub refuses to serve: scanned, but that upgrade is not read', async () => {
+    const { services, store } = worldFor('ratelimited')
+    const tick = await runScanTick(services, startScan(PROJECT), { outboundCallBudget: 1000 })
+
+    expect(tick.stopped).toBe('done')
+    const limited = store.projects.get(PROJECT)?.dependencies[0]
+    expect(limited).toMatchObject({ name: `@${FAKE_OWNER}/limited`, triage: 'major', deferredBy: 'source-refused' })
+    expect(limited?.verdictKey).toBeUndefined()
+    expect(store.verdicts.size).toBe(0)
   })
 
   it('lists every fake package, so the test reset can clear their verdicts', () => {

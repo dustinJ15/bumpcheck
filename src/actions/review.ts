@@ -16,6 +16,7 @@ import type { Env } from '../../worker'
 import type { VerdictStatus } from '../core/model'
 import { addReviewedKey, removeReviewedKey } from '../core/report'
 import { checkReviewRequest } from '../core/requests'
+import { dueTimeAfterOpening } from '../core/schedule'
 import { loadOwnProject, loadVerdict, PROJECT_NOT_FOUND, VERDICT_UNREADABLE } from './own-project'
 
 export const markReviewed: ActionHandler<Env> = async ({ userId, params, tools }) => {
@@ -63,13 +64,23 @@ export const undoReviewed: ActionHandler<Env> = async ({ userId, params, tools }
 /**
  * The owner opened the project's page. Daily scans pause for a project not
  * opened for the idle period (src/core/limits.ts, `isProjectIdle`); this is
- * what resets that timer (story 30).
+ * what resets that timer. If the project had gone idle it is also made due
+ * now, so the next run of the scheduled task scans it and daily scans
+ * resume without another click (story 30).
  */
 export const recordOpened: ActionHandler<Env> = async ({ userId, params, tools }) => {
   const own = await loadOwnProject(tools, userId, params.projectId)
   if (!own.ok) return own.answer
 
-  const updated = await tools.update('projects', own.project.id, { lastOpenedAt: new Date().toISOString() })
+  const now = Date.now()
+  const dueAt = dueTimeAfterOpening(own.project, now)
+  const updated = await tools.update('projects', own.project.id, {
+    lastOpenedAt: new Date(now).toISOString(),
+    // Written only when it changes (the project was idle). A scan that is
+    // finishing at this moment writes its own due time, and an unchanged
+    // value sent from here could overwrite it with the old one.
+    ...(dueAt === own.project.nextDueAt ? {} : { nextDueAt: dueAt }),
+  })
   if (!updated.success) return { success: false, error: 'Could not record the visit.' }
 
   // Answer with what the row now holds, not with what was sent.

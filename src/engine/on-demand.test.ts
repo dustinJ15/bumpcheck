@@ -11,7 +11,15 @@ import { describe, expect, it } from 'vitest'
 import { LIMITS } from '../config'
 import { utcDay } from '../core/limits'
 import type { DependencyResult, Verdict } from '../core/model'
-import { FakeClock, FakeJudge, FakeRegistry, FakeSourceHost, MemoryRecordStore, type FakeJudgeResponder } from '../services/fakes'
+import {
+  defaultFakeResponder,
+  FakeClock,
+  FakeJudge,
+  FakeRegistry,
+  FakeSourceHost,
+  MemoryRecordStore,
+  type FakeJudgeResponder,
+} from '../services/fakes'
 import type { RegistryPackage } from '../services/types'
 import { runScan, startScan, type ScanServices } from './scan'
 import { runScanJobRun, startScanCheckpoint } from './scan-job'
@@ -244,6 +252,23 @@ describe('an on-demand scan ("check this one")', () => {
     expect(w.judge.calls).toEqual([])
     expect(w.registry.calls).toEqual([])
     expect(w.sourceHost.calls).toEqual([])
+  })
+})
+
+describe('daily AI ceiling on an on-demand read: the second attempt is an AI call too', () => {
+  it('does not make the retry attempt when the first attempt used the last call of the day', async () => {
+    const w = await scanned(world({ respond: (input) => (input.packageName === 'zod' ? 'not a verdict' : defaultFakeResponder(input, 1)) }))
+    const day = utcDay(w.clock.now())
+    w.store.aiCalls.set(day, LIMITS.aiCallsPerDay - 1)
+    request(w, 'zod')
+
+    await runScan(w.services, startScan(PROJECT, { onDemand: true }))
+
+    expect(w.judge.calls.map((c) => c.packageName)).toEqual(['zod'])
+    expect(w.store.aiCalls.get(day)).toBe(LIMITS.aiCallsPerDay)
+    expect(w.store.verdicts.has('zod@3->3.23')).toBe(false)
+    expect(dep(w, 'zod').deferredBy).toBe('daily-ceiling')
+    expect(project(w).scanStatus).toBe('done')
   })
 })
 

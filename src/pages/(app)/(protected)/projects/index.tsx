@@ -161,6 +161,7 @@ function ProjectListItem({ record, verdicts }: { record: RecordData<ProjectRow>;
       data-testid="project-row"
       data-repo={name}
       data-scan-status={project.scanStatus}
+      data-last-scan-at={project.lastScanAt ?? undefined}
       data-breaking-count={breaking ?? undefined}
       className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
     >

@@ -173,13 +173,16 @@ function StateNote({ row }: { row: ReportRow }) {
   }
 }
 
-/** Why a limit left this dependency unread, when one did. Limits come from src/config.ts. */
+/** Why this dependency was left unread, when a limit or a refusal stopped it. Limits come from src/config.ts. */
 function deferredNote(dependency: DependencyResult): string | null {
   if (dependency.deferredBy === 'scan-cap') {
     return `Not read yet: the scan reached its limit of ${LIMITS.newVerdictsPerScan} new verdicts. A later scan will read it.`
   }
   if (dependency.deferredBy === 'daily-ceiling') {
     return "Not read yet: the app's daily AI limit was reached. Try again tomorrow."
+  }
+  if (dependency.deferredBy === 'source-refused') {
+    return 'Not read this time: GitHub did not answer the request for its release notes. The next scan will try again.'
   }
   return null
 }

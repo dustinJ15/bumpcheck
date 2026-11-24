@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isNotFound, readFileText, readReleases, readRepoInfo, releasesApiUrl } from './github-source-host'
+import { isNotFound, readFileText, readReleases, readReleasesAnswer, readRepoInfo, releasesApiUrl } from './github-source-host'
 import { npmDocumentUrl, npmLatestUrl, parseRepositoryField } from './npm-registry'
 
 describe('npm registry URLs', () => {
@@ -149,5 +149,31 @@ describe('the Releases fallback', () => {
 
   it('is empty for anything that is not a list (an error body, say)', () => {
     expect(readReleases({ message: 'API rate limit exceeded' }, { owner: 'a', repo: 'b' })).toEqual([])
+  })
+
+  describe('telling "no releases" from "GitHub refused"', () => {
+    const source = { owner: 'a', repo: 'b' }
+
+    it('is "found" for a list with releases in it', () => {
+      expect(readReleasesAnswer(200, body, source)).toEqual({
+        status: 'found',
+        releases: readReleases(body, source),
+        url: 'https://github.com/a/b/releases',
+      })
+    })
+
+    it('is "none" for an empty list, and for a repo GitHub does not know', () => {
+      expect(readReleasesAnswer(200, [], source)).toEqual({ status: 'none' })
+      expect(readReleasesAnswer(404, { message: 'Not Found' }, source)).toEqual({ status: 'none' })
+    })
+
+    it.each([403, 429, 500, 503])('is "refused" for status %i: that says nothing about the package', (status) => {
+      expect(readReleasesAnswer(status, { message: 'API rate limit exceeded' }, source)).toEqual({ status: 'refused' })
+    })
+
+    it('is "refused" for a 200 whose body is not a list', () => {
+      expect(readReleasesAnswer(200, { message: 'what' }, source)).toEqual({ status: 'refused' })
+      expect(readReleasesAnswer(200, null, source)).toEqual({ status: 'refused' })
+    })
   })
 })

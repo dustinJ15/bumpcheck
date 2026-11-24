@@ -22,6 +22,10 @@ export interface OwnProject {
   dependencies: DependencyResult[]
   scanStatus: ScanStatus
   reviewedKeys: string[]
+  /** ISO times, null when never set. */
+  lastScanRequestedAt: string | null
+  lastOpenedAt: string | null
+  nextDueAt: string | null
 }
 
 export const PROJECT_NOT_FOUND: ActionResult<never> = {
@@ -52,8 +56,15 @@ export async function loadOwnProject(
       dependencies: readJson<DependencyResult[]>(data.dependencies) ?? [],
       scanStatus: (typeof data.scanStatus === 'string' ? data.scanStatus : 'idle') as ScanStatus,
       reviewedKeys: readJson<string[]>(data.reviewedKeys) ?? [],
+      lastScanRequestedAt: timeText(data.lastScanRequestedAt),
+      lastOpenedAt: timeText(data.lastOpenedAt),
+      nextDueAt: timeText(data.nextDueAt),
     },
   }
+}
+
+function timeText(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
 }
 
 /** What the actions need to know about a stored verdict. */

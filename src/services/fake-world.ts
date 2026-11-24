@@ -31,6 +31,12 @@
  * no dependencies at all. `bumpcheck-fake/older` is on an older `colors` than
  * the demo repo. `bumpcheck-fake/offline` has one minor upgrade whose
  * changelog the fake GitHub refuses to serve, so a check of it cannot finish.
+ *
+ * Three repos reach the limit and failure notices (ticket 04):
+ *
+ *   bumpcheck-fake/many         more majors than one scan may read, so a scan stops at its limit
+ *   bumpcheck-fake/outage       a major whose changelog cannot be fetched, so the scan fails
+ *   bumpcheck-fake/ratelimited  a major whose release notes GitHub refuses, so it is not read
  */
 
 import {
@@ -42,6 +48,7 @@ import {
   type FakeRepo,
   type FakeSourceHostData,
 } from './fakes'
+import { LIMITS } from '../config'
 import type { Judge, PackageRegistry, RegistryPackage, SourceHost } from './types'
 
 export const FAKE_OWNER = 'bumpcheck-fake'
@@ -52,6 +59,9 @@ function fakePackage(name: string, latest: string, hasSource = true): [string, R
     { latest, versions: [latest], source: hasSource ? { owner: FAKE_OWNER, repo: name } : null },
   ]
 }
+
+/** Two more majors than one scan may read: `many-01` to `many-17`. */
+const MANY_NAMES = Array.from({ length: LIMITS.newVerdictsPerScan + 2 }, (_, i) => `many-${String(i + 1).padStart(2, '0')}`)
 
 const PACKAGES: Record<string, RegistryPackage> = Object.fromEntries([
   fakePackage('router', '5.1.0'),
@@ -67,6 +77,9 @@ const PACKAGES: Record<string, RegistryPackage> = Object.fromEntries([
   fakePackage('slow-b', '3.0.0'),
   fakePackage('slow-c', '4.0.0'),
   fakePackage('unreachable', '1.1.0'),
+  fakePackage('outage', '2.0.0'),
+  fakePackage('limited', '2.0.0'),
+  ...MANY_NAMES.map((name) => fakePackage(name, '2.0.0')),
 ])
 
 /** Every package the fake registry knows. The test reset clears their verdicts by name. */
@@ -122,6 +135,11 @@ const SMALL_PACKAGE_JSON = JSON.stringify({
   dependencies: { [`@${FAKE_OWNER}/tiny`]: '^1.0.0' },
 })
 
+/** A repo whose only dependencies are the given fake packages, each a major behind. */
+function repoBehindOn(name: string, packages: string[]): FakeRepo {
+  return repo(JSON.stringify({ name, dependencies: Object.fromEntries(packages.map((p) => [`@${FAKE_OWNER}/${p}`, '^1.0.0'])) }))
+}
+
 function repo(packageJson: string | null): FakeRepo {
   return { defaultBranch: 'main', files: packageJson === null ? {} : { 'package.json': packageJson } }
 }
@@ -139,6 +157,9 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
     [`${FAKE_OWNER}/offline`]: repo(
       JSON.stringify({ name: 'offline', dependencies: { [`@${FAKE_OWNER}/unreachable`]: '^1.0.0' } }),
     ),
+    [`${FAKE_OWNER}/many`]: repoBehindOn('many', MANY_NAMES),
+    [`${FAKE_OWNER}/outage`]: repoBehindOn('outage', ['outage']),
+    [`${FAKE_OWNER}/ratelimited`]: repoBehindOn('ratelimited', ['limited']),
     // Repos the add-project check refuses.
     [`${FAKE_OWNER}/no-manifest`]: repo(null),
     [`${FAKE_OWNER}/bad-json`]: repo('{ this is not json'),
@@ -175,6 +196,9 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
     [`${FAKE_OWNER}/slow-a`]: ['## 2.0.0', '- BREAKING: renamed the main export.'].join('\n'),
     [`${FAKE_OWNER}/slow-b`]: ['## 3.0.0', '- BREAKING: renamed the main export.'].join('\n'),
     [`${FAKE_OWNER}/slow-c`]: ['## 4.0.0', '- BREAKING: renamed the main export.'].join('\n'),
+    ...Object.fromEntries(
+      MANY_NAMES.map((name) => [`${FAKE_OWNER}/${name}`, ['## 2.0.0', '- BREAKING: renamed the main export.'].join('\n')]),
+    ),
   },
   releases: {
     [`${FAKE_OWNER}/test-runner`]: [
@@ -182,6 +206,8 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
       { tag: 'v2.0.0', name: 'v2.0.0', body: 'Internal rewrite. No changes to the public API.' },
     ],
   },
+  // No CHANGELOG.md, and the fake GitHub will not hand over its release notes.
+  refusedReleases: [`${FAKE_OWNER}/limited`],
 }
 
 /** What the fake model "says", by package. Goes through the real verdict validator. */
@@ -242,8 +268,8 @@ export interface FakeWorld {
   judge: Judge
 }
 
-/** The source repo of the one fake package whose changelog cannot be fetched. */
-const UNREACHABLE_REPO = 'unreachable'
+/** The source repos of the fake packages whose changelog cannot be fetched: the request fails. */
+const UNREACHABLE_REPOS = ['unreachable', 'outage']
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -261,7 +287,7 @@ export function buildFakeWorld(options: { sleep?: (ms: number) => Promise<void> 
       getRepo: (repo) => sourceHost.getRepo(repo),
       getFile: (repo, path, ref) => sourceHost.getFile(repo, path, ref),
       getChangelog: async (source) => {
-        if (source.repo === UNREACHABLE_REPO) throw new Error('GitHub answered 503 (fake)')
+        if (UNREACHABLE_REPOS.includes(source.repo)) throw new Error('GitHub answered 503 (fake)')
         return sourceHost.getChangelog(source)
       },
       getReleases: (source) => sourceHost.getReleases(source),

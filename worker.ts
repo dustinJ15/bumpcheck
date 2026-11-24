@@ -54,7 +54,11 @@ export class AppYjsRoom extends YjsRoom<Env> {}
 export class AppCanvasRoom extends CanvasRoom<Env> {}
 export class AppPresenceRoom extends PresenceRoom<Env> {}
 
-/** Runs the scheduled tasks defined in src/cron.ts. */
+/**
+ * Runs the scheduled task defined in src/cron.ts. Only the app owner can
+ * trigger, pause or resume it from a client: see the /ws/cron route in
+ * src/server/realtime-routes.ts, which is where that is enforced.
+ */
 export class AppCronRoom extends CronRoom<Env> {
   constructor(state: DurableObjectState, env: Env) {
     super(state, env, { tasks: cronTasks })

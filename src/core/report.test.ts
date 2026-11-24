@@ -3,6 +3,7 @@ import type { DependencyGroup, DependencyResult, TriageClass, Verdict, VerdictLa
 import {
   addReviewedKey,
   buildReport,
+  countDeferred,
   countUnreviewedBreaking,
   isReviewable,
   removeReviewedKey,
@@ -294,6 +295,24 @@ describe('countUnreviewedBreaking', () => {
   it('is zero for a project with no dependencies or no verdicts loaded', () => {
     expect(countUnreviewedBreaking([], verdicts, [])).toBe(0)
     expect(countUnreviewedBreaking(dependencies, new Map(), [])).toBe(0)
+  })
+})
+
+describe('countDeferred: what the limits left unread', () => {
+  it('counts the dependencies each limit stopped, runtime and dev together', () => {
+    const dependencies: DependencyResult[] = [
+      { ...dep('a', 'major'), deferredBy: 'scan-cap' },
+      { ...dep('b', 'major', { group: 'dev' }), deferredBy: 'scan-cap' },
+      { ...dep('c', 'minor'), deferredBy: 'daily-ceiling' },
+      { ...dep('d', 'major'), deferredBy: 'source-refused' },
+      dep('e', 'major', { verdictKey: 'e@1->2.0' }),
+    ]
+    expect(countDeferred(dependencies)).toEqual({ scanCap: 2, dailyCeiling: 1, sourceRefused: 1 })
+  })
+
+  it('is all zeros when no limit stopped anything', () => {
+    expect(countDeferred([dep('a', 'major'), dep('b', 'patch')])).toEqual({ scanCap: 0, dailyCeiling: 0, sourceRefused: 0 })
+    expect(countDeferred([])).toEqual({ scanCap: 0, dailyCeiling: 0, sourceRefused: 0 })
   })
 })
 

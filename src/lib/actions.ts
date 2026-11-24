@@ -11,7 +11,7 @@ import { getAuthToken } from 'deepspace'
 
 export type ActionAnswer<TData> =
   | { success: true; data: TData }
-  | { success: false; error: string; code?: string }
+  | { success: false; error: string; code?: string; details?: Record<string, unknown> }
 
 export async function callAction<TData = unknown>(
   name: string,
@@ -32,6 +32,7 @@ export async function callAction<TData = unknown>(
       success: false,
       error: typeof body.error === 'string' ? body.error : 'Something went wrong. Try again.',
       code: 'code' in body && typeof body.code === 'string' ? body.code : undefined,
+      details: 'details' in body && typeof body.details === 'object' && body.details !== null ? body.details : undefined,
     }
   } catch {
     return { success: false, error: 'Could not reach the server. Check your connection and try again.' }

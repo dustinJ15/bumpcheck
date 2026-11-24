@@ -159,9 +159,16 @@ export function registerRealtimeRoutes(app: Hono<AppContext>): void {
     '/ws/cron/:roomId',
     wsRoute(
       (env) => env.CRON_ROOMS,
-      // Authenticated users get their current app role. Anonymous connections
-      // have no role and CronRoom enforces them as read-only viewers.
-      async (auth, env) => ({ role: await resolveAppRole(env, auth.userId) }),
+      // bumpcheck: only the app owner may trigger, pause or resume the
+      // scheduled task. The installed CronRoom (deepspace 0.44.2) lets every
+      // connection whose role is member or admin do all three, and its
+      // config has no authorize option, so without this any signed-in user
+      // could pause the daily scans for everyone from the browser console.
+      // The room cannot be told otherwise, so the role is narrowed here,
+      // before the request reaches it: everyone but the owner connects as a
+      // viewer, which the room treats as read-only. Signed-out connections
+      // carry no role and are viewers already.
+      async (auth, env) => ({ role: (await resolveAppRole(env, auth.userId)) === 'admin' ? 'admin' : 'viewer' }),
     ),
   )
 

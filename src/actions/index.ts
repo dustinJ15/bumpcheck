@@ -11,7 +11,14 @@ import type { Env } from '../../worker'
 import { addProject } from './add-project'
 import { checkDependency, retryVerdict } from './on-demand'
 import { markReviewed, recordOpened, undoReviewed } from './review'
-import { testResetFakeWorld, testResetMyProjects } from './test-reset'
+import { scanNow } from './scan-now'
+import {
+  testResetFakeWorld,
+  testResetMyProjects,
+  testRunScheduledTask,
+  testSetProjectTimes,
+  testUseUpDailyAiLimit,
+} from './test-reset'
 
 export const actions: Record<string, ActionHandler<Env>> = {
   'add-project': addProject,
@@ -21,7 +28,12 @@ export const actions: Record<string, ActionHandler<Env>> = {
   'mark-reviewed': markReviewed,
   'undo-reviewed': undoReviewed,
   'record-opened': recordOpened,
-  // Test-only; refuses unless the fake-services setting is on. See the file.
+  // Scheduling and limits (ticket 04). Also the retry of a failed scan.
+  'scan-now': scanNow,
+  // Test-only; each refuses unless the fake-services setting is on. See the file.
   'test-reset-my-projects': testResetMyProjects,
   'test-reset-fake-world': testResetFakeWorld,
+  'test-set-project-times': testSetProjectTimes,
+  'test-use-up-daily-ai-limit': testUseUpDailyAiLimit,
+  'test-run-scheduled-task': testRunScheduledTask,
 }

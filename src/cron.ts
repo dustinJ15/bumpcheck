@@ -1,35 +1,51 @@
 /**
- * Cron task definitions — registered into the AppCronRoom DO at construction
- * time (worker.ts). The DO alarm fires `runTask(name, env)` on the schedule
- * declared here; the DO itself records executions, tracks history, and
- * pushes status to admin clients via the `/ws/cron/:roomId` WebSocket.
+ * The scheduled task: registered into the AppCronRoom Durable Object
+ * (worker.ts), which calls `runTask` on the schedule declared here and
+ * whenever the app owner triggers the task by hand.
  *
- * Each task declares EITHER `intervalMinutes` (run every N minutes) OR
- * `schedule` + `timezone` (5-field cron expression). CronRoom validates
- * the config at construction time and throws on ambiguous declarations.
+ * bumpcheck has one task, run hourly. It is thin on purpose. What it does is
+ * in src/engine/schedule.ts, which has no platform code and is unit-tested:
+ * mark stalled scans failed, then enqueue a bounded number of scans for the
+ * projects that are due. Which projects those are is decided by the pure
+ * functions in src/core/schedule.ts.
  *
- * Example:
+ * "Daily" comes from each project's own due time, not from this interval:
+ * the task runs every hour and picks the projects whose day is up.
  *
- *   import type { CronTask } from 'deepspace/worker'
- *   import { buildCronContext } from 'deepspace/worker'
+ * The task runs as the app owner, like the scan job. It enqueues through
+ * `enqueueScan`, the same server-side path the actions use, so the job room
+ * stays closed to every client but the owner. It makes no AI call itself:
+ * each scan it starts passes the per-scan cap and the daily AI ceiling in
+ * the scan engine.
  *
- *   export const tasks: CronTask[] = [
- *     { name: 'heartbeat', intervalMinutes: 1 },
- *     { name: 'daily-report', schedule: '0 9 * * *', timezone: 'America/New_York' },
- *   ]
- *
- *   export async function runTask(name: string, env: Env): Promise<void> {
- *     const ctx = buildCronContext(env, env.OWNER_USER_ID, `app:${env.DEEPSPACE_APP_ID}`)
- *     if (name === 'heartbeat') {
- *       // …
- *     }
- *   }
+ * Platform facts (checked against the installed deepspace 0.44.2): an
+ * interval is a whole number of minutes; the schedule is armed by the app's
+ * first request (see `armCronRoom` in worker.ts); an interval task also runs
+ * once right after it is first armed.
  */
 
 import type { CronTask } from 'deepspace/worker'
+import type { Env } from '../worker'
+import { SCHEDULE } from './config'
+import { runScheduleTick } from './engine/schedule'
+import { ownerActionTools } from './server/action-routes'
+import { enqueueScan } from './server/scan-queue'
+import { RecordRoomStore, systemClock } from './services/record-room-store'
 
-export const tasks: CronTask[] = []
+export const DAILY_SCANS_TASK = SCHEDULE.taskName
 
-export async function runTask(_name: string, _env: unknown): Promise<void> {
-  // No-op — implement your cron tasks here. Dispatch on `_name`.
+export const tasks: CronTask[] = [{ name: DAILY_SCANS_TASK, intervalMinutes: SCHEDULE.tickIntervalMinutes }]
+
+export async function runTask(name: string, env: Env): Promise<void> {
+  if (name !== DAILY_SCANS_TASK) throw new Error(`Unknown scheduled task: ${name}`)
+
+  const result = await runScheduleTick({
+    store: new RecordRoomStore(ownerActionTools(env)),
+    clock: systemClock,
+    enqueueScan: async (projectId) => {
+      // A scheduled scan is a full scan (never on-demand), so it may alert.
+      await enqueueScan(env, { projectId, onDemand: false }, 'schedule')
+    },
+  })
+  console.info(`[cron] ${name}: enqueued ${result.enqueued.length}, stalled ${result.stalled.length}`)
 }

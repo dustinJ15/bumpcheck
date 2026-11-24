@@ -37,10 +37,11 @@ export interface DependencyResult {
   /** Key of the shared verdict for this upgrade, when one exists. */
   verdictKey?: string
   /**
-   * Set when a major upgrade has no verdict yet because a limit stopped this
-   * scan: the per-scan cap or the app's daily AI ceiling.
+   * Set when an upgrade has no verdict yet because something stopped this
+   * scan from reading it: the per-scan cap, the app's daily AI ceiling, or
+   * GitHub refusing the request for its release notes. A later scan reads it.
    */
-  deferredBy?: 'scan-cap' | 'daily-ceiling'
+  deferredBy?: 'scan-cap' | 'daily-ceiling' | 'source-refused'
 }
 
 /** Where a package's source lives on GitHub, as the registry reports it. */
@@ -129,9 +130,20 @@ export interface ProjectScanFields {
   scanProgress: ScanProgress | null
   scanReport: ScanReport | null
   scanError: string | null
-  /** ISO times. */
+  /** ISO time the last full scan finished successfully. */
   lastScanAt: string | null
+  /**
+   * ISO time the next daily scan is due. Written whenever a full scan ends,
+   * successfully or not: the end time plus the re-scan interval. Null until
+   * the first scan ends, which counts as due.
+   */
   nextDueAt: string | null
+  /**
+   * ISO time the current scan last showed a sign of life: when it was
+   * queued, and each time the job wrote progress. The scheduled task marks a
+   * queued or scanning project failed when this gets too old.
+   */
+  scanHeartbeatAt: string | null
   /**
    * Package names an on-demand job should read ("check this one", or a
    * retry of a failed verdict). Written by the server action before it

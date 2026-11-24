@@ -10,6 +10,7 @@
  * Pure: no I/O, no platform imports.
  */
 
+import { scanNowCooldown } from './limits'
 import type { DependencyResult, ScanStatus, Verdict, VerdictStatus } from './model'
 import { verdictCovers } from './verdict-cover'
 
@@ -70,6 +71,54 @@ export function checkOnDemandRequest(input: {
   }
   if (verdictStatus !== null) return refuse('already-read', 'This upgrade has already been read.')
   return { ok: true }
+}
+
+export type ScanNowCheck =
+  | { ok: true }
+  | { ok: false; refusal: 'scan-running'; message: string }
+  /** `availableAt` is when "scan now" can be pressed again (epoch milliseconds). */
+  | { ok: false; refusal: 'cooling-down'; message: string; availableAt: number }
+
+/**
+ * May a full scan be started by its owner now? This is "scan now", and also
+ * the retry of a failed scan.
+ *
+ *   - one scan at a time per project (decision 8);
+ *   - not inside the cooldown, which counts from the user's last scan
+ *     request (adding the project, or the last "scan now"). Nobody is
+ *     exempt from it, the app owner included.
+ *
+ * The per-scan cap and the daily AI ceiling are checked by the scan engine
+ * when the job runs, as for every scan.
+ */
+export function checkScanNowRequest(input: {
+  scanStatus: ScanStatus
+  /** Epoch milliseconds. Null when no scan was ever requested. */
+  lastScanRequestedAt: number | null
+  now: number
+}): ScanNowCheck {
+  if (input.scanStatus === 'queued' || input.scanStatus === 'scanning') {
+    return {
+      ok: false,
+      refusal: 'scan-running',
+      message: 'A scan is already running for this project. Try again when it finishes.',
+    }
+  }
+  const cooldown = scanNowCooldown({ lastRequestedAt: input.lastScanRequestedAt, now: input.now })
+  if (cooldown.coolingDown) {
+    return {
+      ok: false,
+      refusal: 'cooling-down',
+      message: `Scan now is cooling down. It will be available again at ${utcClockTime(cooldown.availableAt)}.`,
+      availableAt: cooldown.availableAt,
+    }
+  }
+  return { ok: true }
+}
+
+/** "12:10 UTC". The server does not know the user's time zone; the page shows local time. */
+function utcClockTime(time: number): string {
+  return `${new Date(time).toISOString().slice(11, 16)} UTC`
 }
 
 /**

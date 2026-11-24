@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { LIMITS } from '../config'
+import { LIMITS, SCHEDULE } from '../config'
 import {
   isDailyCeilingReached,
   isProjectDue,
+  isoToTime,
   isProjectIdle,
+  isScanStalled,
   mayAddProject,
+  mayAttemptAddProject,
   mayJudgeAnother,
+  nextDueTime,
+  nextUtcDayStart,
   scanNowCooldown,
   utcDay,
 } from './limits'
@@ -63,14 +68,60 @@ describe('scanNowCooldown', () => {
 })
 
 describe('isProjectDue: re-scan interval', () => {
-  it('is due when never scanned', () => {
-    expect(isProjectDue({ lastScanAt: null, now })).toBe(true)
+  it('is due when it has no due time yet (never scanned)', () => {
+    expect(isProjectDue({ nextDueAt: null, now })).toBe(true)
   })
 
-  it('is due at 24 hours, not a millisecond before', () => {
-    expect(isProjectDue({ lastScanAt: now - LIMITS.rescanIntervalMs + 1, now })).toBe(false)
-    expect(isProjectDue({ lastScanAt: now - LIMITS.rescanIntervalMs, now })).toBe(true)
+  it('is due 24 hours after its last scan ended, not a millisecond before', () => {
+    const scanEndedAt = now - LIMITS.rescanIntervalMs
+    expect(isProjectDue({ nextDueAt: nextDueTime(scanEndedAt + 1), now })).toBe(false)
+    expect(isProjectDue({ nextDueAt: nextDueTime(scanEndedAt), now })).toBe(true)
     expect(LIMITS.rescanIntervalMs).toBe(24 * 60 * 60 * 1000)
+  })
+
+  it('is due exactly at its due time, and after it', () => {
+    expect(isProjectDue({ nextDueAt: now + 1, now })).toBe(false)
+    expect(isProjectDue({ nextDueAt: now, now })).toBe(true)
+    expect(isProjectDue({ nextDueAt: now - 1, now })).toBe(true)
+  })
+})
+
+describe('nextDueTime', () => {
+  it('is the re-scan interval after the scan ended', () => {
+    expect(nextDueTime(now)).toBe(now + LIMITS.rescanIntervalMs)
+  })
+})
+
+describe('mayAttemptAddProject: add-project attempts per user per day', () => {
+  it('allows the 20th attempt of the day and refuses the 21st', () => {
+    expect(mayAttemptAddProject({ attemptsToday: LIMITS.addAttemptsPerUserPerDay - 1, isAppOwner: false })).toBe(true)
+    expect(mayAttemptAddProject({ attemptsToday: LIMITS.addAttemptsPerUserPerDay, isAppOwner: false })).toBe(false)
+    expect(LIMITS.addAttemptsPerUserPerDay).toBe(20)
+  })
+
+  it('exempts the app owner (a per-user limit)', () => {
+    expect(mayAttemptAddProject({ attemptsToday: LIMITS.addAttemptsPerUserPerDay, isAppOwner: true })).toBe(true)
+    expect(mayAttemptAddProject({ attemptsToday: LIMITS.addAttemptsPerUserPerDay + 100, isAppOwner: true })).toBe(true)
+  })
+})
+
+describe('isScanStalled: a scan with no sign of life', () => {
+  it('is stalled at 30 minutes without a sign of life, not a millisecond before', () => {
+    expect(isScanStalled({ lastSignOfLifeAt: now - SCHEDULE.stalledScanMs + 1, now })).toBe(false)
+    expect(isScanStalled({ lastSignOfLifeAt: now - SCHEDULE.stalledScanMs, now })).toBe(true)
+    expect(SCHEDULE.stalledScanMs).toBe(30 * 60 * 1000)
+  })
+
+  it('is stalled when no sign of life was ever recorded', () => {
+    expect(isScanStalled({ lastSignOfLifeAt: null, now })).toBe(true)
+  })
+})
+
+describe('nextUtcDayStart: when daily counters reset', () => {
+  it('is the next midnight UTC', () => {
+    expect(nextUtcDayStart(Date.parse('2026-11-23T12:00:00.000Z'))).toBe(Date.parse('2026-11-24T00:00:00.000Z'))
+    expect(nextUtcDayStart(Date.parse('2026-11-23T23:59:59.999Z'))).toBe(Date.parse('2026-11-24T00:00:00.000Z'))
+    expect(nextUtcDayStart(Date.parse('2026-11-24T00:00:00.000Z'))).toBe(Date.parse('2026-11-25T00:00:00.000Z'))
   })
 })
 
@@ -86,5 +137,15 @@ describe('utcDay', () => {
   it('keys daily counters by UTC date', () => {
     expect(utcDay(Date.parse('2026-11-23T23:59:59.999Z'))).toBe('2026-11-23')
     expect(utcDay(Date.parse('2026-11-24T00:00:00.000Z'))).toBe('2026-11-24')
+  })
+})
+
+describe('isoToTime', () => {
+  it('reads a stored ISO time, and is null for a missing or unreadable one', () => {
+    expect(isoToTime('2026-11-23T12:00:00.000Z')).toBe(now)
+    expect(isoToTime(null)).toBeNull()
+    expect(isoToTime(undefined)).toBeNull()
+    expect(isoToTime('')).toBeNull()
+    expect(isoToTime('yesterday-ish')).toBeNull()
   })
 })

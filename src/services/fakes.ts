@@ -22,6 +22,7 @@ import type {
   RecordStore,
   RegistryPackage,
   ReleaseList,
+  ReleasesAnswer,
   RepoInfo,
   SourceHost,
 } from './types'
@@ -55,6 +56,8 @@ export interface FakeSourceHostData {
   changelogs?: Record<string, string>
   /** Source key -> release notes. */
   releases?: Record<string, ReleaseList['releases']>
+  /** Source keys whose release notes GitHub "refuses" to serve (a rate limit, say). */
+  refusedReleases?: string[]
 }
 
 export type SourceHostCall =
@@ -93,12 +96,13 @@ export class FakeSourceHost implements SourceHost {
     return { text, url: `https://github.com/${source.owner}/${source.repo}/blob/HEAD/${folder}CHANGELOG.md` }
   }
 
-  async getReleases(source: SourceRepo): Promise<ReleaseList | null> {
+  async getReleases(source: SourceRepo): Promise<ReleasesAnswer> {
     const key = sourceKey(source)
     this.calls.push({ method: 'getReleases', source: key })
+    if (this.data.refusedReleases?.includes(key)) return { status: 'refused' }
     const releases = this.data.releases?.[key]
-    if (releases === undefined) return null
-    return { releases, url: `https://github.com/${source.owner}/${source.repo}/releases` }
+    if (releases === undefined) return { status: 'none' }
+    return { status: 'found', releases, url: `https://github.com/${source.owner}/${source.repo}/releases` }
   }
 }
 
@@ -162,7 +166,7 @@ export class FakeMailer implements Mailer {
 // ------------------------------------------------------------ record store
 
 export type RecordStoreCall =
-  | { method: 'getProject' | 'getVerdict' | 'getAiCalls' | 'addAiCall'; arg: string }
+  | { method: 'getProject' | 'listProjects' | 'getVerdict' | 'getAiCalls' | 'addAiCall'; arg: string }
   | { method: 'updateProject'; arg: string; changes: Partial<ProjectScanFields> }
   | { method: 'putVerdict'; arg: string }
 
@@ -184,6 +188,8 @@ export class MemoryRecordStore implements RecordStore {
       scanError: null,
       lastScanAt: null,
       nextDueAt: null,
+      scanHeartbeatAt: null,
+      lastOpenedAt: null,
       checkRequests: [],
       ...fields,
     }))
@@ -193,6 +199,11 @@ export class MemoryRecordStore implements RecordStore {
     this.calls.push({ method: 'getProject', arg: projectId })
     const project = this.projects.get(projectId)
     return project ? copy(project) : null
+  }
+
+  async listProjects(): Promise<ProjectRecord[]> {
+    this.calls.push({ method: 'listProjects', arg: '' })
+    return [...this.projects.values()].map(copy)
   }
 
   async updateProject(projectId: string, changes: Partial<ProjectScanFields>): Promise<void> {

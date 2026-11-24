@@ -51,6 +51,20 @@ export interface ReleaseList {
 }
 
 /**
+ * What asking for a package's release notes can end in. "none" and
+ * "refused" are kept apart on purpose: "none" is a fact about the package
+ * and may be remembered, "refused" (a rate limit, a network failure) says
+ * nothing about the package, so the engine stores no verdict and a later
+ * scan asks again.
+ */
+export type ReleasesAnswer =
+  | ({ status: 'found' } & ReleaseList)
+  /** The repo has no release notes. */
+  | { status: 'none' }
+  /** GitHub would not answer this time. */
+  | { status: 'refused' }
+
+/**
  * GitHub. Real: the GitHub integration for repo metadata and files; GitHub's
  * public Releases API over plain `fetch` for release notes.
  */
@@ -61,8 +75,8 @@ export interface SourceHost {
   getFile(repo: RepoRef, path: string, ref: string): Promise<string | null>
   /** A package's CHANGELOG.md (in its monorepo folder, if it has one). Null when there is none. */
   getChangelog(source: SourceRepo): Promise<ChangelogFile | null>
-  /** A package's GitHub release notes. Null when there are none or the request is refused. */
-  getReleases(source: SourceRepo): Promise<ReleaseList | null>
+  /** A package's GitHub release notes, or why there are none to read. Does not throw for a refusal. */
+  getReleases(source: SourceRepo): Promise<ReleasesAnswer>
 }
 
 // ------------------------------------------------------------------- judge
@@ -101,6 +115,8 @@ export interface ProjectRecord extends ProjectScanFields {
   id: string
   /** The user who owns the project (the schema's owner field). */
   userId: string
+  /** ISO time the owner last opened the project's page. Written by a server action, read by the schedule. */
+  lastOpenedAt: string | null
 }
 
 /**
@@ -109,6 +125,8 @@ export interface ProjectRecord extends ProjectScanFields {
  */
 export interface RecordStore {
   getProject(projectId: string): Promise<ProjectRecord | null>
+  /** Every project in the app. Used by the scheduled task to find the due and the stalled ones. */
+  listProjects(): Promise<ProjectRecord[]>
   updateProject(projectId: string, changes: Partial<ProjectScanFields>): Promise<void>
   getVerdict(key: string): Promise<Verdict | null>
   /** Creates or replaces the verdict with this key. */

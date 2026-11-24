@@ -9,7 +9,10 @@
  *   look-up        ask the registry for each dependency's versions, a batch per step
  *   attach-cached  triage, then attach verdicts already in the shared cache
  *   judge          one major upgrade per step: changelog -> slice -> judge,
- *                  within the per-scan cap and the daily AI ceiling, runtime first
+ *                  within the per-scan cap and the daily AI ceiling, runtime first.
+ *                  Every AI call in the app is made by this step, so every
+ *                  path to the judge (first scan, daily scan, scan now,
+ *                  check one, retry) passes the same two checks.
  *   write          write the results to the project row
  *   alert          hand off to the alert hook (a no-op until ticket 06)
  *   done
@@ -34,13 +37,19 @@
  *   - Anything unexpected (a service throws) propagates. The job decides
  *     whether to retry; when it gives up it calls `markScanFailed`.
  *   Either way the project's dependency list, and so its verdicts, is left
- *   as the last good scan wrote it (story 27).
+ *   as the last good scan wrote it (story 27), and the failed attempt counts
+ *   as the project's scan for the day: `markScanFailed` moves its due time
+ *   on, so the hourly task does not pick a failing project every hour.
+ *
+ * Signs of life: every write that starts a scan or reports progress also
+ * stamps `scanHeartbeatAt`. The scheduled task uses it to find scans that
+ * stopped without saying so (src/engine/schedule.ts).
  */
 
-import { JUDGE, LIMITS, SCAN_PACING } from '../config'
+import { JUDGE, SCAN_PACING } from '../config'
 import { sliceChangelog, sliceReleases, type SlicedChangelog } from '../core/changelog'
-import { isDailyCeilingReached, mayJudgeAnother, utcDay } from '../core/limits'
-import type { DependencyResult, ScanReport, SourceRepo, Verdict } from '../core/model'
+import { isDailyCeilingReached, mayJudgeAnother, nextDueTime, utcDay } from '../core/limits'
+import type { DependencyResult, ProjectScanFields, ScanReport, SourceRepo, Verdict } from '../core/model'
 import {
   needsRegistryLookup,
   pickTarget,
@@ -160,13 +169,33 @@ export async function runScan(
   return current
 }
 
+/** What recording a failure needs: somewhere to write it, and the time. */
+export interface FailureRecorder {
+  store: Pick<RecordStore, 'updateProject'>
+  clock: Clock
+}
+
 /**
- * Records a failed scan on the project: status and reason, and any on-demand
- * request is dropped. The dependency list, and the verdicts it points at,
- * stay as they were.
+ * What a project row is set to when a scan or a check is queued for it.
+ * Used by everything that enqueues: the server actions and the scheduled task.
+ */
+export function queuedFields(
+  now: number,
+): Pick<ProjectScanFields, 'scanStatus' | 'scanProgress' | 'scanError' | 'scanHeartbeatAt'> {
+  return { scanStatus: 'queued', scanProgress: null, scanError: null, scanHeartbeatAt: iso(now) }
+}
+
+/**
+ * Records a failed full scan on the project: status and reason, and any
+ * on-demand request is dropped. The dependency list, and the verdicts it
+ * points at, stay as they were, and so does `lastScanAt` (the last scan
+ * that worked).
+ *
+ * The attempt is recorded by moving the due time on: the project is next
+ * due after the normal re-scan interval, whatever the failure was.
  */
 export async function markScanFailed(
-  services: Pick<ScanServices, 'store'>,
+  services: FailureRecorder,
   projectId: string,
   reason: string,
 ): Promise<void> {
@@ -174,6 +203,7 @@ export async function markScanFailed(
     scanStatus: 'failed',
     scanError: reason,
     scanProgress: null,
+    nextDueAt: iso(nextDueTime(services.clock.now())),
     checkRequests: [],
   })
 }
@@ -185,7 +215,7 @@ export async function markScanFailed(
  * request is dropped, so the user can ask again.
  */
 export async function markCheckFailed(
-  services: Pick<ScanServices, 'store'>,
+  services: Pick<FailureRecorder, 'store'>,
   projectId: string,
   reason: string,
 ): Promise<void> {
@@ -217,6 +247,7 @@ async function readRequest(services: ScanServices, state: ScanState): Promise<Sc
     scanStatus: 'scanning',
     scanError: null,
     scanProgress: { step: 'read-request', message: 'Starting the check', done: 0, total: 1 },
+    scanHeartbeatAt: iso(services.clock.now()),
   })
 
   // Start from the last scan's results: an on-demand scan changes only the
@@ -232,7 +263,7 @@ async function readRequest(services: ScanServices, state: ScanState): Promise<Sc
     delete dep.deferredBy
     const key = verdictKey(dep.name, dep.current, dep.target)
     const cached = await services.store.getVerdict(key)
-    if (cached !== null && cached.status !== 'failed' && verdictCovers(cached, dep)) {
+    if (isSettled(cached, dep, true)) {
       dep.verdictKey = key
       continue
     }
@@ -255,6 +286,7 @@ async function readManifest(services: ScanServices, state: ScanState): Promise<S
     scanStatus: 'scanning',
     scanError: null,
     scanProgress: { step: 'read-manifest', message: 'Reading package.json', done: 0, total: 1 },
+    scanHeartbeatAt: iso(services.clock.now()),
   })
 
   const manifest = await readRepoManifest(services.sourceHost, { owner: project.repoOwner, repo: project.repoName })
@@ -302,7 +334,7 @@ async function attachCached(services: ScanServices, state: ScanState): Promise<S
     // for a minor or patch upgrade. Only majors are judged automatically.
     // (src/core/verdict-cover.ts says when a stored verdict covers this dependency.)
     const cached = await services.store.getVerdict(key)
-    if (cached !== null && verdictCovers(cached, dep)) dep.verdictKey = key
+    if (isSettled(cached, dep, false)) dep.verdictKey = key
     else if (dep.triage === 'major') needVerdict.push(dep)
   }
 
@@ -317,6 +349,23 @@ async function attachCached(services: ScanServices, state: ScanState): Promise<S
 }
 
 async function judgeNext(services: ScanServices, state: ScanState): Promise<ScanState> {
+  const name = state.judgeQueue[0]
+  const dep = findDependency(state, name)
+  const from = dep.current as string
+  const to = dep.target as string
+  const key = verdictKey(name, from, to)
+  const source = ownValue(state.sources, name)
+
+  // Look before paying. When this step runs a second time (a record write
+  // failed after the judge answered, or the job restarted from an older
+  // checkpoint), the verdict it produced the first time is already stored.
+  const stored = await services.store.getVerdict(key)
+  if (isSettled(stored, dep, state.onDemand)) {
+    dep.verdictKey = key
+    return nextInQueue(state)
+  }
+
+  // The two limits every AI call passes, whichever kind of scan this is.
   if (!mayJudgeAnother({ judgedThisScan: state.report.judged })) {
     return deferRest(state, 'scan-cap')
   }
@@ -324,13 +373,6 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
   if (isDailyCeilingReached({ aiCallsToday: await services.store.getAiCalls(day) })) {
     return deferRest(state, 'daily-ceiling')
   }
-
-  const name = state.judgeQueue[0]
-  const dep = findDependency(state, name)
-  const from = dep.current as string
-  const to = dep.target as string
-  const key = verdictKey(name, from, to)
-  const source = ownValue(state.sources, name)
 
   await progress(
     services,
@@ -344,6 +386,15 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
   const changelog = await findChangelog(services.sourceHost, source, name, { from, to })
   const base = { key, packageName: name, fromVersion: from, toVersion: to, changes: [] }
 
+  if (changelog === 'refused') {
+    // GitHub would not hand over the release notes. That says nothing about
+    // the package, so nothing goes into the cache every project shares: the
+    // dependency is left unread, marked with the reason, and the next scan
+    // asks again. No AI call, and not counted against the per-scan cap.
+    dep.deferredBy = 'source-refused'
+    return nextInQueue(state)
+  }
+
   if (changelog === null) {
     // No changelog text means no AI call (decision 5). Not counted against the per-scan cap.
     await services.store.putVerdict({
@@ -354,9 +405,7 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
       decidedAt: iso(services.clock.now()),
     })
     dep.verdictKey = key
-    state.judgeQueue.shift()
-    if (state.judgeQueue.length === 0) state.step = 'write'
-    return state
+    return nextInQueue(state)
   }
 
   const input = {
@@ -401,9 +450,27 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
 
   dep.verdictKey = key
   state.report.judged++
+  return nextInQueue(state)
+}
+
+/** The first dependency in the queue is dealt with: move to the next, or to writing the results. */
+function nextInQueue(state: ScanState): ScanState {
   state.judgeQueue.shift()
   if (state.judgeQueue.length === 0) state.step = 'write'
   return state
+}
+
+/**
+ * Is this stored verdict the answer for this dependency, so that the judge
+ * need not be asked? It must cover the dependency (src/core/verdict-cover.ts).
+ * A scan takes a verdict of any status, a failed one included: its attempts
+ * were paid for, and trying again is the user's Retry button. An on-demand
+ * read is that button (or "check this one"), so it does not settle for a
+ * failed verdict.
+ */
+function isSettled(stored: Verdict | null, dep: DependencyResult, onDemand: boolean): stored is Verdict {
+  if (stored === null || !verdictCovers(stored, dep)) return false
+  return onDemand ? stored.status !== 'failed' : true
 }
 
 async function writeResults(services: ScanServices, state: ScanState): Promise<ScanState> {
@@ -431,7 +498,7 @@ async function writeResults(services: ScanServices, state: ScanState): Promise<S
     scanReport: state.report,
     scanError: null,
     lastScanAt: iso(now),
-    nextDueAt: iso(now + LIMITS.rescanIntervalMs),
+    nextDueAt: iso(nextDueTime(now)),
     checkRequests: [],
   })
   state.step = 'alert'
@@ -445,13 +512,17 @@ async function alert(services: ScanServices, state: ScanState): Promise<ScanStat
 
 // ---------------------------------------------------------------- helpers
 
-/** CHANGELOG.md first, then GitHub releases. Null when neither has in-range text. */
+/**
+ * CHANGELOG.md first, then GitHub releases. Null when neither has in-range
+ * text. "refused" when the changelog file had nothing and GitHub would not
+ * answer the request for release notes, so there may be text we did not see.
+ */
 async function findChangelog(
   sourceHost: SourceHost,
   source: SourceRepo | null,
   packageName: string,
   range: { from: string; to: string },
-): Promise<(SlicedChangelog & { url: string }) | null> {
+): Promise<(SlicedChangelog & { url: string }) | 'refused' | null> {
   if (source === null) return null
 
   const file = await sourceHost.getChangelog(source)
@@ -461,7 +532,8 @@ async function findChangelog(
   }
 
   const list = await sourceHost.getReleases(source)
-  if (list !== null) {
+  if (list.status === 'refused') return 'refused'
+  if (list.status === 'found') {
     const sliced = sliceReleases(list.releases, range, packageName)
     if (sliced.text !== '') return { ...sliced, url: list.url }
   }
@@ -507,7 +579,10 @@ async function progress(
   done: number,
   total: number,
 ): Promise<void> {
-  await services.store.updateProject(state.projectId, { scanProgress: { step, message, done, total } })
+  await services.store.updateProject(state.projectId, {
+    scanProgress: { step, message, done, total },
+    scanHeartbeatAt: iso(services.clock.now()),
+  })
 }
 
 /**

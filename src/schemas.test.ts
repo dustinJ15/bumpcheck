@@ -1,5 +1,5 @@
 /**
- * The four bumpcheck collections, checked with the SDK's own permission
+ * The five bumpcheck collections, checked with the SDK's own permission
  * functions (the ones the record room enforces), so the rules below are the
  * rules the server applies.
  */
@@ -22,7 +22,7 @@ function row(data: Record<string, unknown>) {
   return { data, createdBy: 'app-owner', recordId: 'r1' }
 }
 
-const BUMPCHECK = ['projects', 'verdicts', 'alerts', 'usage']
+const BUMPCHECK = ['projects', 'verdicts', 'alerts', 'usage', 'attempts']
 
 describe('bumpcheck collections', () => {
   it('are all registered', () => {
@@ -96,5 +96,26 @@ describe('usage', () => {
   it('is server-only: no role reads it', () => {
     const s = schema('usage')
     for (const role of ROLES) expect(canRead(s, role, row({ day: '2026-11-23' }), 'anyone')).toBe(false)
+  })
+})
+
+describe('attempts', () => {
+  const s = schema('attempts')
+
+  it('is server-only: no role reads it, not even the user the row is about', () => {
+    const aliceAttempt = row({ userId: 'alice', day: '2026-11-23' })
+    for (const role of ROLES) expect(canRead(s, role, aliceAttempt, 'alice')).toBe(false)
+  })
+
+  it('keeps who and which day fixed once written', () => {
+    for (const name of ['userId', 'day']) {
+      expect(s.columns.find((c) => c.name === name)).toMatchObject({ required: true, immutable: true })
+    }
+  })
+})
+
+describe('projects: scan bookkeeping', () => {
+  it('has a column for the scan\'s last sign of life, which the stalled-scan check reads', () => {
+    expect(schema('projects').columns.map((c) => c.name)).toContain('scanHeartbeatAt')
   })
 })

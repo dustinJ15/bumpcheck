@@ -31,6 +31,31 @@ export const LIMITS = {
   testEmailsPerUserPerDay: 3,
   /** Alert emails one project may send per UTC day. */
   alertEmailsPerProjectPerDay: 1,
+  /**
+   * Add-project attempts one user may make per UTC day. An attempt is a
+   * request that gets as far as GitHub: each one costs the owner one or two
+   * GitHub calls even when the repo is then refused. The app owner is exempt.
+   */
+  addAttemptsPerUserPerDay: 20,
+} as const
+
+/** The scheduled task that starts the daily scans (src/cron.ts). */
+export const SCHEDULE = {
+  /** The task's name in the cron room. */
+  taskName: 'daily-scans',
+  /** How often the task runs. The platform takes whole minutes. */
+  tickIntervalMinutes: 60,
+  /**
+   * Scans one run of the task may enqueue. Scans run one at a time in the
+   * job room, so this is also roughly how many can finish before the next run.
+   */
+  scansPerTick: 5,
+  /**
+   * A project that has been "queued" or "scanning" this long with no sign of
+   * life from its job is treated as failed. A job tick may run for 15
+   * minutes at most and writes progress as it goes, so twice that is safe.
+   */
+  stalledScanMs: 30 * MINUTE_MS,
 } as const
 
 export const JUDGE = {

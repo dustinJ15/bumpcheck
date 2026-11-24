@@ -14,6 +14,7 @@ import { projectsSchema } from './schemas/projects-schema'
 import { verdictsSchema } from './schemas/verdicts-schema'
 import { alertsSchema } from './schemas/alerts-schema'
 import { usageSchema } from './schemas/usage-schema'
+import { attemptsSchema } from './schemas/attempts-schema'
 
 export const schemas: CollectionSchema[] = [
   usersSchema,
@@ -22,4 +23,5 @@ export const schemas: CollectionSchema[] = [
   verdictsSchema,
   alertsSchema,
   usageSchema,
+  attemptsSchema,
 ]

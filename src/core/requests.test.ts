@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DependencyResult, ScanStatus, TriageClass, VerdictStatus } from './model'
-import { checkOnDemandRequest, checkReviewRequest } from './requests'
+import { LIMITS } from '../config'
+import { checkOnDemandRequest, checkReviewRequest, checkScanNowRequest } from './requests'
 
 function dep(name: string, triage: TriageClass, verdictKey?: string): DependencyResult {
   const checked = triage !== 'not-checked'
@@ -124,5 +125,40 @@ describe('checkReviewRequest', () => {
   it('refuses a failed verdict (it is retried, not reviewed) and a verdict that does not exist', () => {
     expect(checkReviewRequest({ dependencies, verdictKey: 'a@1->2.0', verdictStatus: 'failed' })).toMatchObject({ ok: false })
     expect(checkReviewRequest({ dependencies, verdictKey: 'a@1->2.0', verdictStatus: null })).toMatchObject({ ok: false })
+  })
+})
+
+describe('checkScanNowRequest: "scan now"', () => {
+  const now = Date.parse('2026-11-23T12:00:00.000Z')
+  const longAgo = now - LIMITS.scanNowCooldownMs
+
+  it.each(['idle', 'done', 'failed'] as const)('accepts a project whose status is %s once the cooldown has passed', (scanStatus) => {
+    expect(checkScanNowRequest({ scanStatus, lastScanRequestedAt: longAgo, now })).toEqual({ ok: true })
+  })
+
+  it('accepts a project that never had a scan requested', () => {
+    expect(checkScanNowRequest({ scanStatus: 'done', lastScanRequestedAt: null, now })).toEqual({ ok: true })
+  })
+
+  it.each(['queued', 'scanning'] as const)('refuses while a scan is %s: one scan at a time', (scanStatus) => {
+    expect(checkScanNowRequest({ scanStatus, lastScanRequestedAt: longAgo, now })).toMatchObject({
+      ok: false,
+      refusal: 'scan-running',
+    })
+  })
+
+  it('refuses inside the 10-minute cooldown and says when it will be available', () => {
+    const lastScanRequestedAt = now - LIMITS.scanNowCooldownMs + 1
+    const check = checkScanNowRequest({ scanStatus: 'done', lastScanRequestedAt, now })
+    expect(check).toMatchObject({ ok: false, refusal: 'cooling-down', availableAt: lastScanRequestedAt + LIMITS.scanNowCooldownMs })
+    // 12:00:00.001 UTC is when it comes back.
+    expect(check.ok ? '' : check.message).toContain('12:00 UTC')
+  })
+
+  it('applies the cooldown to a failed scan too: a retry is a scan request', () => {
+    expect(checkScanNowRequest({ scanStatus: 'failed', lastScanRequestedAt: now - 1000, now })).toMatchObject({
+      ok: false,
+      refusal: 'cooling-down',
+    })
   })
 })

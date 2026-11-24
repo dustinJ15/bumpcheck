@@ -20,14 +20,18 @@
  * separate page (ticket 05).
  *
  * Writes are not done here. Every button calls a server action, which checks
- * the caller and ownership first (src/actions/).
+ * the caller and ownership first (src/actions/). "Scan now" is one of them:
+ * the server decides whether a scan may start, and the page shows its answer
+ * (src/components/report/ScanNotices.tsx has the notices).
  */
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useUser, type RecordData } from 'deepspace'
 import { DependencyRow, type RowAction } from '@/components/report/DependencyRow'
+import { ScanNotices } from '@/components/report/ScanNotices'
 import { ScanStatusLine } from '@/components/report/ScanStatus'
+import { Button } from '@/components/ui'
 import type { DependencyGroup, DependencyResult, ScanProgress } from '@/core/model'
 import { buildReport, type Report, type ReportRow, type SectionId, type VerdictsByKey } from '@/core/report'
 import { callAction } from '@/lib/actions'
@@ -107,6 +111,9 @@ function ProjectView(props: { record: RecordData<ProjectRow>; verdicts: ReturnTy
   const checkRequests = readJson<string[]>(project.checkRequests) ?? []
   const scanRunning = project.scanStatus === 'queued' || project.scanStatus === 'scanning'
   const [actionError, setActionError] = useState<string | null>(null)
+  const [startingScan, setStartingScan] = useState(false)
+  // When the server last refused "scan now" for its cooldown: the time it said the button returns.
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
 
   // Tell the server the owner opened the project: it resets the idle timer
   // that pauses daily scans (story 30). Once per visit.
@@ -121,31 +128,54 @@ function ProjectView(props: { record: RecordData<ProjectRow>; verdicts: ReturnTy
     // On success there is nothing to do: the changed row arrives through the live query.
   }
 
+  /** "Scan now", and Retry on a failed scan. The server applies the cooldown and the one-scan-at-a-time rule. */
+  async function scanNow() {
+    setActionError(null)
+    setStartingScan(true)
+    const answer = await callAction('scan-now', { projectId })
+    setStartingScan(false)
+    // A cooldown refusal has its own notice, with the time the server gave; anything else is shown as it came.
+    const availableAt = !answer.success && answer.code === 'cooling-down' ? answer.details?.availableAt : undefined
+    setCooldownUntil(typeof availableAt === 'number' ? availableAt : null)
+    if (!answer.success && typeof availableAt !== 'number') setActionError(answer.error)
+  }
+
   return (
-    <div data-testid="project-page" data-scan-status={project.scanStatus} className="flex flex-col gap-6">
+    <div
+      data-testid="project-page"
+      data-scan-status={project.scanStatus}
+      data-last-scan-at={project.lastScanAt ?? undefined}
+      className="flex flex-col gap-6"
+    >
       <header className="flex flex-col gap-2">
         <h1 className="break-all font-mono text-xl font-semibold tracking-tight sm:text-2xl">{name}</h1>
         <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
           <ScanStatusLine project={project} />
-          <a
-            href={`https://github.com/${name}`}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            View on GitHub
-          </a>
+          <div className="flex shrink-0 items-center gap-3">
+            <a
+              href={`https://github.com/${name}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              View on GitHub
+            </a>
+            <Button size="sm" variant="outline" loading={startingScan} disabled={scanRunning} onClick={scanNow}>
+              Scan now
+            </Button>
+          </div>
         </div>
       </header>
 
       {scanRunning && <ScanProgressPanel progress={readJson<ScanProgress>(project.scanProgress)} />}
 
-      {project.scanStatus === 'failed' && (
-        <ErrorPanel title="The last scan failed">
-          {project.scanError ?? 'Unknown reason.'}
-          {dependencies.length > 0 && ' The results below are from the last scan that finished.'}
-        </ErrorPanel>
-      )}
+      <ScanNotices
+        project={project}
+        dependencies={dependencies}
+        cooldownUntil={cooldownUntil}
+        starting={startingScan}
+        onScanNow={scanNow}
+      />
 
       {/* A check or retry that could not finish. The last full scan still stands, so the status is "done". */}
       {project.scanStatus === 'done' && project.scanError && (

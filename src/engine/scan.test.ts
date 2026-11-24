@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { LIMITS } from '../config'
 import { utcDay } from '../core/limits'
 import type { DependencyResult, Verdict } from '../core/model'
+import { selectDueProjects } from '../core/schedule'
 import {
   FakeClock,
   FakeJudge,
@@ -17,9 +18,13 @@ import {
   type FakeSourceHostData,
 } from '../services/fakes'
 import type { RegistryPackage } from '../services/types'
+import { checkNewProject, type AddAttempts } from './add-project'
 import { markScanFailed, runScan, runScanStep, startScan, type AlertHook, type ScanServices } from './scan'
 
 const PROJECT = 'project-1'
+
+/** For add-project checks that are not about the attempt cap. */
+const noAttemptLimit: AddAttempts = { countToday: async () => 0, record: async () => 1 }
 
 /** A package on the fake registry whose source is github.com/acme/<name>. */
 function pkg(name: string, latest: string): [string, RegistryPackage] {
@@ -37,6 +42,7 @@ interface WorldOptions {
   packages?: Array<[string, RegistryPackage]>
   changelogs?: FakeSourceHostData['changelogs']
   releases?: FakeSourceHostData['releases']
+  refusedReleases?: FakeSourceHostData['refusedReleases']
   packageJson?: string | null
   respond?: FakeJudgeResponder
 }
@@ -55,6 +61,7 @@ function world(options: WorldOptions = {}) {
     repos: { 'dustin/app': { defaultBranch: 'main', files } },
     changelogs: options.changelogs,
     releases: options.releases,
+    refusedReleases: options.refusedReleases,
   })
   const judge = new FakeJudge(options.respond)
   const store = new MemoryRecordStore()
@@ -63,7 +70,13 @@ function world(options: WorldOptions = {}) {
   const alertHook: AlertHook = async ({ projectId }) => {
     alerts.push(projectId)
   }
-  store.seedProject({ id: PROJECT, userId: 'user-1', repoOwner: 'dustin', repoName: 'app' })
+  store.seedProject({
+    id: PROJECT,
+    userId: 'user-1',
+    repoOwner: 'dustin',
+    repoName: 'app',
+    lastOpenedAt: new Date(clock.now()).toISOString(),
+  })
 
   const services: ScanServices = { registry, sourceHost, judge, store, clock, alertHook }
   return { services, registry, sourceHost, judge, store, clock, alerts }
@@ -239,6 +252,31 @@ describe('daily AI ceiling', () => {
   })
 })
 
+describe('daily AI ceiling: the second attempt is an AI call too', () => {
+  it('does not make the retry attempt when the first attempt used the last call of the day', async () => {
+    const w = world({
+      dependencies: { express: '^4.0.0', chalk: '^4.0.0' },
+      packages: [pkg('express', '5.1.0'), pkg('chalk', '5.0.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0'), 'acme/chalk': changelogFor('5.0.0') },
+      respond: () => 'not a verdict',
+    })
+    const day = utcDay(w.clock.now())
+    w.store.aiCalls.set(day, LIMITS.aiCallsPerDay - 1)
+
+    await runScan(w.services, startScan(PROJECT))
+
+    // One call, the 150th. The retry would have been the 151st.
+    expect(w.judge.calls).toHaveLength(1)
+    expect(w.store.aiCalls.get(day)).toBe(LIMITS.aiCallsPerDay)
+    // Not stored as failed on half its attempts: left for a later scan, with the reason.
+    expect(w.store.verdicts.size).toBe(0)
+    const p = project(w.store)
+    expect(dep(p.dependencies, 'express').deferredBy).toBe('daily-ceiling')
+    expect(dep(p.dependencies, 'chalk').deferredBy).toBe('daily-ceiling')
+    expect(p.scanReport).toEqual({ judged: 0, deferredByScanCap: 0, deferredByDailyCeiling: 2 })
+  })
+})
+
 describe('no changelog', () => {
   it('means no judge call, and a "no changelog" verdict linking to the releases page', async () => {
     const w = world({ dependencies: { express: '^4.0.0' }, packages: [pkg('express', '5.1.0')] })
@@ -291,6 +329,135 @@ describe('no changelog', () => {
     expect(w.judge.calls).toHaveLength(1)
     expect(w.judge.calls[0].changelog).toContain('release notes 5.0.0')
     expect(w.store.verdicts.get('express@4->5.1')?.sourceUrl).toBe('https://github.com/acme/express/releases')
+  })
+})
+
+describe('a refused Releases request', () => {
+  const refusedWorld = () =>
+    world({
+      dependencies: { express: '^4.0.0' },
+      packages: [pkg('express', '5.1.0')],
+      refusedReleases: ['acme/express'],
+    })
+
+  it('stores no verdict and spends no judge call: the dependency is not read this time', async () => {
+    const w = refusedWorld()
+
+    const end = await runScan(w.services, startScan(PROJECT))
+
+    expect(end.outcome).toBe('succeeded')
+    expect(w.judge.calls).toEqual([])
+    expect(w.store.aiCalls.size).toBe(0)
+    // Nothing goes into the cache every project shares.
+    expect(w.store.verdicts.size).toBe(0)
+    const express = dep(project(w.store).dependencies, 'express')
+    expect(express.verdictKey).toBeUndefined()
+    expect(express.deferredBy).toBe('source-refused')
+    expect(project(w.store).scanStatus).toBe('done')
+  })
+
+  it('is tried again by the next scan, which reads the release notes once GitHub answers', async () => {
+    const w = refusedWorld()
+    await runScan(w.services, startScan(PROJECT))
+
+    w.sourceHost.data.refusedReleases = []
+    w.sourceHost.data.releases = { 'acme/express': [{ tag: 'v5.0.0', body: 'release notes 5.0.0' }] }
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls.map((c) => c.packageName)).toEqual(['express'])
+    const express = dep(project(w.store).dependencies, 'express')
+    expect(express.verdictKey).toBe('express@4->5.1')
+    expect(express.deferredBy).toBeUndefined()
+  })
+
+  it('does not count against the per-scan cap, and the scan goes on to the next dependency', async () => {
+    const w = world({
+      dependencies: { express: '^4.0.0', chalk: '^4.0.0' },
+      packages: [pkg('express', '5.1.0'), pkg('chalk', '5.0.0')],
+      changelogs: { 'acme/chalk': changelogFor('5.0.0') },
+      refusedReleases: ['acme/express'],
+    })
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls.map((c) => c.packageName)).toEqual(['chalk'])
+    expect(project(w.store).scanReport).toEqual({ judged: 1, deferredByScanCap: 0, deferredByDailyCeiling: 0 })
+  })
+
+  it('is not asked for at all when CHANGELOG.md has the text', async () => {
+    const w = world({
+      dependencies: { express: '^4.0.0' },
+      packages: [pkg('express', '5.1.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0') },
+      refusedReleases: ['acme/express'],
+    })
+    await runScan(w.services, startScan(PROJECT))
+    expect(w.store.verdicts.get('express@4->5.1')?.status).toBe('ready')
+  })
+})
+
+describe('a verdict is not paid for twice', () => {
+  const twoMajors = () =>
+    world({
+      dependencies: { express: '^4.0.0', chalk: '^4.0.0' },
+      packages: [pkg('express', '5.1.0'), pkg('chalk', '5.0.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0'), 'acme/chalk': changelogFor('5.0.0') },
+    })
+
+  it('when the verdict was stored but the write was reported as failed, the retried step uses the stored verdict', async () => {
+    const w = twoMajors()
+    // The record room stores the verdict, then the reply is lost: the step sees a failure.
+    const putVerdict = w.store.putVerdict.bind(w.store)
+    let failNext = true
+    w.store.putVerdict = async (verdict) => {
+      await putVerdict(verdict)
+      if (failNext) {
+        failNext = false
+        throw new Error('record room timed out')
+      }
+    }
+
+    let state = await runScan(w.services, startScan(PROJECT), { maxSteps: 3 })
+    expect(state.step).toBe('judge')
+    await expect(runScanStep(w.services, state)).rejects.toThrow('record room timed out')
+    // The job retries from the last state that was saved: the same judge step.
+    state = await runScan(w.services, state)
+
+    expect(state.outcome).toBe('succeeded')
+    expect(w.judge.calls.map((c) => c.packageName)).toEqual(['express', 'chalk'])
+    expect(w.store.aiCalls.get(utcDay(w.clock.now()))).toBe(2)
+    expect(dep(project(w.store).dependencies, 'express').verdictKey).toBe('express@4->5.1')
+  })
+
+  it('when a scan resumes from an older checkpoint, verdicts stored since then are not judged again', async () => {
+    const w = twoMajors()
+    const checkpoint = await runScan(w.services, startScan(PROJECT), { maxSteps: 3 })
+    expect(checkpoint.step).toBe('judge')
+    // Both verdicts are judged and stored, but the job dies before saving its state.
+    await runScan(w.services, checkpoint)
+    expect(w.judge.calls).toHaveLength(2)
+
+    const end = await runScan(w.services, checkpoint)
+
+    expect(end.outcome).toBe('succeeded')
+    expect(w.judge.calls).toHaveLength(2)
+    expect(end.report.judged).toBe(0)
+  })
+
+  it('a failed verdict stored since the checkpoint is kept too: its two attempts were already paid for', async () => {
+    const w = world({
+      dependencies: { express: '^4.0.0' },
+      packages: [pkg('express', '5.1.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0') },
+      respond: () => 'not a verdict',
+    })
+    const checkpoint = await runScan(w.services, startScan(PROJECT), { maxSteps: 3 })
+    await runScan(w.services, checkpoint)
+    expect(w.judge.calls).toHaveLength(2)
+
+    await runScan(w.services, checkpoint)
+
+    expect(w.judge.calls).toHaveLength(2)
+    expect(w.store.verdicts.get('express@4->5.1')?.status).toBe('failed')
   })
 })
 
@@ -367,6 +534,32 @@ describe('a failed scan keeps old verdicts', () => {
     expect(w.store.verdicts.get('express@4->5.1')?.status).toBe('ready')
   })
 
+  it('when the repo is the problem, the attempt is recorded: the project is not due again until the re-scan interval has passed', async () => {
+    const { w } = await scannedWorld({})
+    // A day later the daily scan finds the package.json gone.
+    w.clock.advance(LIMITS.rescanIntervalMs)
+    const failedAt = w.clock.now()
+    const lastGoodScanAt = project(w.store).lastScanAt
+    const due = () => selectDueProjects([project(w.store)], w.clock.now())
+    expect(due()).toEqual([PROJECT])
+    w.sourceHost.data.repos!['dustin/app'].files = {}
+
+    await runScan(w.services, startScan(PROJECT))
+
+    const p = project(w.store)
+    expect(p.scanStatus).toBe('failed')
+    expect(p.nextDueAt).toBe(new Date(failedAt + LIMITS.rescanIntervalMs).toISOString())
+    // "Last scan" still means the last one that worked.
+    expect(p.lastScanAt).toBe(lastGoodScanAt)
+    // The hourly task leaves it alone for a day, then tries again.
+    w.clock.advance(60 * 60 * 1000)
+    expect(due()).toEqual([])
+    w.clock.advance(LIMITS.rescanIntervalMs - 60 * 60 * 1000 - 1)
+    expect(due()).toEqual([])
+    w.clock.advance(1)
+    expect(due()).toEqual([PROJECT])
+  })
+
   it('when package.json is not valid JSON', async () => {
     const { w, before } = await scannedWorld({})
     w.sourceHost.data.repos!['dustin/app'].files = { 'package.json': '{ nope' }
@@ -389,6 +582,67 @@ describe('a failed scan keeps old verdicts', () => {
     const p = project(w.store)
     expect(p).toMatchObject({ scanStatus: 'failed', scanError: 'registry down' })
     expect(p.dependencies).toEqual(before)
+  })
+})
+
+describe('signs of life', () => {
+  it('records the time whenever the scan writes progress, and clears nothing the stall check needs', async () => {
+    const w = world({
+      dependencies: { express: '^4.0.0' },
+      packages: [pkg('express', '5.1.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0') },
+    })
+    const start = w.clock.now()
+
+    let state = await runScanStep(w.services, startScan(PROJECT))
+    expect(project(w.store)).toMatchObject({ scanStatus: 'scanning', scanHeartbeatAt: new Date(start).toISOString() })
+
+    // Each later step that reports progress moves the time forward.
+    w.clock.advance(60_000)
+    state = await runScanStep(w.services, state)
+    expect(project(w.store).scanHeartbeatAt).toBe(new Date(start + 60_000).toISOString())
+
+    w.clock.advance(60_000)
+    state = await runScanStep(w.services, state) // attach-cached: no progress write
+    state = await runScanStep(w.services, state) // judge
+    expect(state.step).toBe('write')
+    expect(project(w.store).scanHeartbeatAt).toBe(new Date(start + 120_000).toISOString())
+  })
+
+  it('an on-demand check records it too', async () => {
+    const w = world({ dependencies: { zod: '^3.22.0' }, packages: [pkg('zod', '3.23.8')] })
+    await runScan(w.services, startScan(PROJECT))
+    w.clock.advance(5 * 60_000)
+    w.store.projects.set(PROJECT, { ...project(w.store), checkRequests: ['zod'], scanStatus: 'queued' })
+
+    await runScanStep(w.services, startScan(PROJECT, { onDemand: true }))
+
+    expect(project(w.store).scanHeartbeatAt).toBe(new Date(w.clock.now()).toISOString())
+  })
+})
+
+describe('the app owner and the limits', () => {
+  it('passes the per-user project limit but is stopped by the daily AI ceiling like everyone else', async () => {
+    // Adding a project: the owner is past the limit of 3 and is still allowed.
+    const existing = Array.from({ length: LIMITS.projectsPerUser + 2 }, (_, i) => ({ owner: 'dustin', repo: `other-${i}` }))
+    const w = world({
+      dependencies: { express: '^4.0.0' },
+      packages: [pkg('express', '5.1.0')],
+      changelogs: { 'acme/express': changelogFor('5.0.0') },
+    })
+    const asOwner = await checkNewProject({ repoInput: 'dustin/app', isAppOwner: true, existing, now: w.clock.now() }, w.sourceHost, noAttemptLimit)
+    const asMember = await checkNewProject({ repoInput: 'dustin/app', isAppOwner: false, existing, now: w.clock.now() }, w.sourceHost, noAttemptLimit)
+    expect(asOwner).toMatchObject({ ok: true })
+    expect(asMember).toMatchObject({ ok: false, refusal: 'project-limit' })
+
+    // Scanning it: the ceiling is app-wide and the scan does not know or care whose project it is.
+    w.store.projects.set(PROJECT, { ...project(w.store), userId: 'the-app-owner' })
+    w.store.aiCalls.set(utcDay(w.clock.now()), LIMITS.aiCallsPerDay)
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls).toEqual([])
+    expect(dep(project(w.store).dependencies, 'express').deferredBy).toBe('daily-ceiling')
+    expect(project(w.store).scanReport).toEqual({ judged: 0, deferredByScanCap: 0, deferredByDailyCeiling: 1 })
   })
 })
 

@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { SCAN_PACING } from '../config'
+import { LIMITS, SCAN_PACING } from '../config'
+import { selectDueProjects } from '../core/schedule'
 import { buildFakeWorld, FAKE_OWNER } from '../services/fake-world'
 import { FakeClock, MemoryRecordStore } from '../services/fakes'
 import type { PackageRegistry } from '../services/types'
@@ -27,9 +28,16 @@ function world(options: { failures?: number } = {}) {
     },
   }
   const store = new MemoryRecordStore()
-  store.seedProject({ id: PROJECT, userId: 'user-1', repoOwner: FAKE_OWNER, repoName: 'demo' })
-  const services: ScanServices = { ...fakes, registry, store, clock: new FakeClock(), alertHook: noAlerts }
-  return { services, store }
+  const clock = new FakeClock()
+  store.seedProject({
+    id: PROJECT,
+    userId: 'user-1',
+    repoOwner: FAKE_OWNER,
+    repoName: 'demo',
+    lastOpenedAt: new Date(clock.now()).toISOString(),
+  })
+  const services: ScanServices = { ...fakes, registry, store, clock, alertHook: noAlerts }
+  return { services, store, clock }
 }
 
 /** Runs the job to its end the way the job room would, saving the checkpoint as JSON between runs. */
@@ -97,6 +105,36 @@ describe('runScanJobRun', () => {
     expect(after?.scanStatus).toBe('failed')
     expect(after?.scanError).toBe('The scan could not finish. Try again later.')
     expect(after?.dependencies).toEqual(before?.dependencies)
+  })
+
+  it('retries a failed scan once, then marks it failed with every old verdict intact, and records the attempt', async () => {
+    const { services, store, clock } = world()
+    await runToEnd(services)
+    const before = structuredClone(store.projects.get(PROJECT)!)
+    const verdictsBefore = structuredClone([...store.verdicts.entries()])
+    expect(verdictsBefore.length).toBeGreaterThan(3)
+
+    // The next day's scan, with the registry down the whole time.
+    clock.advance(LIMITS.rescanIntervalMs)
+    const down = world({ failures: 1000 })
+    const failing: ScanServices = { ...down.services, store, clock }
+    const { runs, last } = await runToEnd(failing)
+
+    // Exactly one retry: the first failed tick asks to run again, the second ends the scan.
+    expect(runs.map((run) => run.next)).toEqual(['continue', 'finish'])
+    expect(runs[0]).toMatchObject({ afterMs: SCAN_PACING.retryDelayMs })
+    expect(last).toMatchObject({ outcome: 'failed', reason: 'The scan could not finish. Try again later.' })
+
+    const after = store.projects.get(PROJECT)!
+    expect(after).toMatchObject({ scanStatus: 'failed', scanError: 'The scan could not finish. Try again later.' })
+    // The report and the shared verdicts are exactly what the last good scan left.
+    expect(after.dependencies).toEqual(before.dependencies)
+    expect([...store.verdicts.entries()]).toEqual(verdictsBefore)
+    expect(after.lastScanAt).toBe(before.lastScanAt)
+    // The failed attempt counts as today's scan: due again a day later, not at the next hourly run.
+    expect(after.nextDueAt).toBe(new Date(clock.now() + LIMITS.rescanIntervalMs).toISOString())
+    expect(selectDueProjects([after], clock.now() + 60 * 60 * 1000)).toEqual([])
+    expect(selectDueProjects([after], clock.now() + LIMITS.rescanIntervalMs)).toEqual([PROJECT])
   })
 
   it('counts failed ticks across the whole scan: with its one retry used, the next failure is final', async () => {

@@ -53,6 +53,9 @@ export const projectsSchema: CollectionSchema = {
     { name: 'nextDueAt', storage: 'text', interpretation: { kind: 'datetime' } },
     { name: 'lastScanRequestedAt', storage: 'text', interpretation: { kind: 'datetime' } },
     { name: 'lastOpenedAt', storage: 'text', interpretation: { kind: 'datetime' } },
+    // When the scan was queued or last wrote progress. The scheduled task
+    // marks a queued or scanning project failed when this gets too old.
+    { name: 'scanHeartbeatAt', storage: 'text', interpretation: { kind: 'datetime' } },
     // Package names the next on-demand job should read (string[]). The job
     // payload carries only the project id, so the request is recorded here.
     { name: 'checkRequests', storage: 'text', interpretation: 'json', default: [] },

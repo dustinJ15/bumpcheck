@@ -24,6 +24,9 @@ export interface ProjectRow {
   scanProgress: ScanProgress | string | null
   scanError: string | null
   lastScanAt: string | null
+  /** When the next daily scan is due, and when the user last asked for a scan (the cooldown counts from it). */
+  nextDueAt: string | null
+  lastScanRequestedAt: string | null
   dependencies: DependencyResult[] | string | null
   reviewedKeys: string[] | string | null
   checkRequests: string[] | string | null

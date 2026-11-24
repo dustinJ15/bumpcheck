@@ -192,6 +192,20 @@ export function countUnreviewedBreaking(
   return buildReport(dependencies, verdicts, reviewedKeys).unreviewedBreaking
 }
 
+/**
+ * How many dependencies were left unread by each thing that can stop a
+ * read: the per-scan cap, the app's daily AI ceiling, and GitHub refusing
+ * the release notes. The project page shows a notice for each (stories 28, 29).
+ */
+export function countDeferred(dependencies: readonly DependencyResult[]): {
+  scanCap: number
+  dailyCeiling: number
+  sourceRefused: number
+} {
+  const count = (reason: DependencyResult['deferredBy']) => dependencies.filter((dep) => dep.deferredBy === reason).length
+  return { scanCap: count('scan-cap'), dailyCeiling: count('daily-ceiling'), sourceRefused: count('source-refused') }
+}
+
 /** The reviewed list with `key` added. The input is not changed. */
 export function addReviewedKey(reviewedKeys: readonly string[], key: string): string[] {
   return reviewedKeys.includes(key) ? [...reviewedKeys] : [...reviewedKeys, key]

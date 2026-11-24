@@ -5,8 +5,9 @@
  * integration, billed to the app owner (src/integrations.ts). Release notes
  * are the best-effort fallback (decision 4): one plain, unauthenticated
  * `fetch` to GitHub's public Releases API, which is free. If GitHub refuses
- * it (rate limit, network), the answer is "no release notes", and the
- * verdict becomes "no changelog found".
+ * it (rate limit, network), the answer is "refused", which is not the same
+ * as "this package has no releases": the scan engine stores no verdict for
+ * a refusal and the next scan asks again.
  *
  * The integration is injected as a function, so this file needs nothing from
  * the platform. The pure helpers that read the responses are unit-tested.
@@ -17,7 +18,7 @@
 import { SCAN_PACING } from '../config'
 import type { ReleaseNote } from '../core/changelog'
 import type { RepoRef, SourceRepo } from '../core/model'
-import type { ChangelogFile, ReleaseList, RepoInfo, SourceHost } from './types'
+import type { ChangelogFile, ReleasesAnswer, RepoInfo, SourceHost } from './types'
 
 /** What an integration call answers. `ActionTools.integration` has this shape. */
 export type IntegrationReply =
@@ -51,22 +52,18 @@ export class GitHubSourceHost implements SourceHost {
     return { text, url: `https://github.com/${source.owner}/${source.repo}/blob/HEAD/${path}` }
   }
 
-  async getReleases(source: SourceRepo): Promise<ReleaseList | null> {
-    let body: unknown
+  async getReleases(source: SourceRepo): Promise<ReleasesAnswer> {
     try {
       const response = await fetch(releasesApiUrl(source), {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'bumpcheck' },
         signal: AbortSignal.timeout(SCAN_PACING.outboundTimeoutMs),
       })
-      if (!response.ok) return null
-      body = await response.json()
+      const body: unknown = await response.json().catch(() => null)
+      return readReleasesAnswer(response.status, body, source)
     } catch {
-      // Best effort: a refused or failed request is "no release notes".
-      return null
+      // The request did not get through at all (network, timeout).
+      return { status: 'refused' }
     }
-    const releases = readReleases(body, source)
-    if (releases.length === 0) return null
-    return { releases, url: `https://github.com/${source.owner}/${source.repo}/releases` }
   }
 
   private async readFile(repo: RepoRef, path: string, ref: string | undefined): Promise<string | null> {
@@ -146,6 +143,23 @@ export function readReleases(body: unknown, source: SourceRepo): ReleaseNote[] {
     })
   }
   return releases
+}
+
+/**
+ * Turns the Releases API's reply into an answer the scan engine can act on.
+ *
+ *   found    a list with usable releases in it
+ *   none     an empty list, or 404 (GitHub does not know the repo): a fact
+ *            about the package, which the engine may store as "no changelog"
+ *   refused  anything else (403 and 429 are the rate limit, 5xx an outage,
+ *            a body that is not a list): nothing is known about the package
+ */
+export function readReleasesAnswer(status: number, body: unknown, source: SourceRepo): ReleasesAnswer {
+  if (status === 404) return { status: 'none' }
+  if (status < 200 || status > 299 || !Array.isArray(body)) return { status: 'refused' }
+  const releases = readReleases(body, source)
+  if (releases.length === 0) return { status: 'none' }
+  return { status: 'found', releases, url: `https://github.com/${source.owner}/${source.repo}/releases` }
 }
 
 function decodeBase64Utf8(content: string): string {
