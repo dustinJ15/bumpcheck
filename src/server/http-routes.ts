@@ -19,7 +19,6 @@ import {
   resolveAppRole,
   resolveSessionReadAuth,
   SESSION_COOKIE,
-  verifyAgentToken,
   verifyJwt,
   nativeAuthCallback,
   nativeAuthExchange,
@@ -44,14 +43,6 @@ export async function resolveAuth(req: Request, env: Env): Promise<VerifyResult 
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null
   if (!token) return null
   return (await verifyJwt(jwtConfig(env), token)).result
-}
-
-/** Agent credentials are valid only at the exact origin receiving the request. */
-export async function resolveAgentAuth(req: Request, env: Env): Promise<VerifyResult | null> {
-  const header = req.headers.get('Authorization')
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : null
-  if (!token) return null
-  return (await verifyAgentToken(jwtConfig(env), token, new URL(req.url).origin)).result
 }
 
 /**

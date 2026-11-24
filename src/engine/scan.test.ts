@@ -712,7 +712,7 @@ describe('bad input', () => {
     const w = world()
     w.store.seedProject({ id: PROJECT, userId: 'user-1', repoOwner: 'nobody', repoName: 'nothing' })
     const end = await runScan(w.services, startScan(PROJECT))
-    expect(end.failureReason).toBe('The repository was not found or is not public.')
+    expect(end.failureReason).toBe('The repository was not found or is not public. bumpcheck reads public repositories only.')
     expect(w.registry.calls).toEqual([])
   })
 

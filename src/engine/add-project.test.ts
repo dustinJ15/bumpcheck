@@ -103,7 +103,7 @@ describe('checkNewProject: each refusal has its own message', () => {
     expect(await checkNewProject(request('acme/missing'), host(), attempts())).toEqual({
       ok: false,
       refusal: 'repo-not-found',
-      message: 'The repository was not found or is not public.',
+      message: 'The repository was not found or is not public. bumpcheck reads public repositories only.',
     })
   })
 

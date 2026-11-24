@@ -76,7 +76,7 @@ function AddProjectForm() {
           name="repo"
           value={repo}
           onChange={(event) => setRepo(event.target.value)}
-          placeholder="owner/repo or https://github.com/owner/repo"
+          placeholder="owner/repo or a GitHub URL"
           autoComplete="off"
           spellCheck={false}
           aria-invalid={error ? true : undefined}
@@ -114,7 +114,7 @@ function ProjectList({ userId }: { userId: string }) {
   if (status === 'loading') return <ListMessage>Loading your projects...</ListMessage>
   if (status === 'error') {
     return (
-      <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+      <div role="alert" className="rounded-lg border border-l-4 border-destructive/30 border-l-destructive bg-card px-4 py-3 text-sm">
         <p className="font-medium text-destructive">Could not load your projects</p>
         <p className="mt-1 text-muted-foreground">{error ?? 'Reload the page to try again.'}</p>
       </div>

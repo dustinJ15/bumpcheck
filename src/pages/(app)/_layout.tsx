@@ -4,7 +4,7 @@
  * `(app)` is a Generouted route group: the parentheses mean it does NOT appear
  * in the URL, so (app)/home.tsx is served at /home. Every page under this
  * folder is wrapped in the DeepSpace providers below, so it may call `useAuth`,
- * `useQuery`, `useMutations`, presence/Yjs hooks, etc.
+ * `useQuery`, `useMutations`, etc.
  *
  * Pages OUTSIDE this folder (top level of src/pages/) get none of this — they
  * render as static pages with no auth fetch and no records WebSocket. Move a
@@ -18,7 +18,7 @@
 import { Suspense, type ReactNode } from 'react'
 import { Outlet } from 'react-router-dom'
 import { DeepSpaceAuthProvider, useAuthStatus } from 'deepspace'
-import { RecordProvider, RecordScope, AgentTools } from 'deepspace'
+import { RecordProvider, RecordScope } from 'deepspace'
 import Navigation from '../../components/Navigation'
 import { useToast } from '@/components/ui'
 import { APP_NAME, SCOPE_ID } from '../../constants'
@@ -73,7 +73,6 @@ function AuthBoot({ children }: { children: ReactNode }) {
       }
     >
       <RecordScope roomId={SCOPE_ID} schemas={schemas}>
-        <AgentTools />
         {children}
       </RecordScope>
     </RecordProvider>

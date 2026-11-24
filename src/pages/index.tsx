@@ -24,65 +24,138 @@
 
 import { Link } from 'react-router-dom'
 import { Seo } from '../components/Seo'
-import { EXAMPLE_PROJECT_ID } from '../config'
-import { APP_NAME } from '../constants'
+import { Wordmark } from '../components/Wordmark'
+import { EXAMPLE_PROJECT_ID, LIMITS } from '../config'
 import { shareLinkPath } from '../core/public-report'
 import { seo } from '../seo'
 
-/** How a verdict reads, shown as three short lines under the pitch. */
-const VERDICTS = [
-  { label: 'Breaking', text: 'what changed, and what to do about each change' },
-  { label: 'Safe', text: 'a major version that will not touch your code' },
-  { label: 'Unclear', text: 'the changelog was too vague, so it does not guess' },
+/**
+ * How a report reads, drawn as three rows of one. An illustration of the
+ * format, labelled as such on the page: the real thing is the example
+ * report behind the button.
+ */
+const SAMPLE_ROWS = [
+  {
+    name: 'express',
+    versions: '4.21.2 → 5.1.0',
+    label: 'Breaking',
+    tone: 'border-destructive/25 bg-destructive/10 text-destructive',
+    text: 'what changed, and what to do about each change',
+  },
+  {
+    name: 'zod',
+    versions: '3.23.8 → 4.1.12',
+    label: 'Unclear',
+    tone: 'border-warning/30 bg-warning/10 text-warning',
+    text: 'the changelog was too vague, so it does not guess',
+  },
+  {
+    name: 'dotenv',
+    versions: '16.4.5 → 17.2.3',
+    label: 'Safe',
+    tone: 'border-success/25 bg-success/10 text-success',
+    text: 'a major version that will not touch your code',
+  },
+]
+
+/** What happens after you add a repo, in order. */
+const STEPS = [
+  'Reads the root package.json of a public GitHub repo.',
+  'Sorts every dependency by how far behind it is. Minor and patch upgrades are listed as "not read", not as safe.',
+  'Reads the changelog of each major upgrade and gives a verdict, with a link to what it read.',
+  'Scans again every day, and can email you when a new breaking upgrade appears.',
 ]
 
 const SIGN_IN_LINK =
-  'inline-flex items-center justify-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary'
+  'inline-flex items-center justify-center rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary'
 
 export default function Landing() {
   return (
     <>
       <Seo {...seo} path="/" />
-      <div data-testid="static-landing" className="flex min-h-screen flex-col items-center justify-center px-4 py-16 text-center sm:px-6">
-        <h1 className="font-mono text-4xl font-bold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
-        <p data-testid="landing-pitch" className="mt-5 max-w-xl text-lg text-foreground">
-          Point bumpcheck at a public GitHub repo and it reads the changelogs of your outdated npm dependencies to tell you which
-          upgrades will break.
-        </p>
+      <div data-testid="static-landing" className="min-h-screen">
+        <header className="border-b border-border bg-card">
+          <div className="mx-auto flex h-12 max-w-3xl items-center justify-between gap-3 px-4 sm:px-6">
+            <Wordmark />
+            <Link to="/projects" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              Your projects
+            </Link>
+          </div>
+        </header>
 
-        <ul className="mt-8 w-full max-w-xl divide-y divide-border rounded-lg border border-border bg-card text-left text-sm">
-          {VERDICTS.map((verdict) => (
-            <li key={verdict.label} className="flex flex-col gap-0.5 px-4 py-2.5 sm:flex-row sm:gap-3">
-              <span className="w-20 shrink-0 font-mono font-semibold text-foreground">{verdict.label}</span>
-              <span className="text-muted-foreground">{verdict.text}</span>
-            </li>
-          ))}
-        </ul>
+        <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-12 sm:px-6 sm:py-16">
+          <section>
+            <h1 className="text-4xl sm:text-5xl">
+              <Wordmark size="lg" />
+            </h1>
+            <p data-testid="landing-pitch" className="mt-5 max-w-2xl text-lg leading-relaxed text-foreground">
+              Point bumpcheck at a public GitHub repo and it reads the changelogs of your outdated npm dependencies to tell you which
+              upgrades will break.
+            </p>
 
-        <Link
-          to={shareLinkPath(EXAMPLE_PROJECT_ID)}
-          data-testid="landing-example-link"
-          className="mt-8 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          See an example report
-        </Link>
-        <p className="mt-2 text-xs text-muted-foreground">A real report, no account needed.</p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link
+                to={shareLinkPath(EXAMPLE_PROJECT_ID)}
+                data-testid="landing-example-link"
+                className="inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
+                See an example report
+              </Link>
+              <p className="text-xs text-muted-foreground">A real report of a real repo. No account needed.</p>
+            </div>
+          </section>
 
-        <div className="mt-8 flex w-full max-w-xl flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-          <a href="/api/auth/social-redirect?provider=github" className={SIGN_IN_LINK}>
-            Sign in with GitHub
-          </a>
-          <a href="/api/auth/social-redirect?provider=google" className={SIGN_IN_LINK}>
-            Sign in with Google
-          </a>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Signing in lets you add your own repos. Already signed in?{' '}
-          <Link to="/projects" className="underline underline-offset-4 hover:text-foreground">
-            Open your projects
-          </Link>
-          .
-        </p>
+          <section aria-labelledby="sample-title">
+            <h2 id="sample-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              How a report reads <span className="font-normal normal-case tracking-normal">(an illustration)</span>
+            </h2>
+            <ul className="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border bg-card text-left text-sm shadow-sm">
+              {SAMPLE_ROWS.map((row) => (
+                <li key={row.name} className="flex flex-col gap-1 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono font-medium">{row.name}</span>
+                    <span className={`inline-flex items-center rounded-sm border px-1.5 py-px text-[11px] leading-4 font-medium ${row.tone}`}>
+                      {row.label}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">{row.versions}</span>
+                  </div>
+                  <span className="text-muted-foreground">{row.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section aria-labelledby="steps-title">
+            <h2 id="steps-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              What it does
+            </h2>
+            <ol className="mt-2 space-y-2 text-sm">
+              {STEPS.map((step, index) => (
+                <li key={step} className="flex gap-3">
+                  <span className="w-5 shrink-0 font-mono text-muted-foreground">{index + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section aria-labelledby="sign-in-title" className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-5">
+            <h2 id="sign-in-title" className="text-base font-semibold">
+              Check your own repos
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sign in with GitHub or Google to add up to {LIMITS.projectsPerUser} public repositories. There is no password to create.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <a href="/api/auth/social-redirect?provider=github" className={SIGN_IN_LINK}>
+                Sign in with GitHub
+              </a>
+              <a href="/api/auth/social-redirect?provider=google" className={SIGN_IN_LINK}>
+                Sign in with Google
+              </a>
+            </div>
+          </section>
+        </main>
       </div>
     </>
   )

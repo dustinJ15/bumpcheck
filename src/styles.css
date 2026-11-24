@@ -1,101 +1,68 @@
 @import "tailwindcss" source(none);
-@import "./themes.css";
 
 /* Scan local source + SDK components for Tailwind class usage */
 @source "./**/*.{ts,tsx}";
 @source "../node_modules/deepspace/dist/**/*.js";
 
 /*
- * Theming — pure shadcn/ui CSS variables with [data-theme] selectors.
+ * bumpcheck's one theme: light, dense, developer-tool style.
  *
- * The @theme block below holds the default theme (slate). All other themes
- * live in `themes.css` as `[data-theme="<id>"]` override blocks. Switching
- * themes = changing the data-theme attribute on <html> in index.html. No
- * JS, no FOUC.
+ * One accent colour, the blue of `--color-primary`, for links, primary
+ * buttons, focus rings and progress. Everything else is ink on a light grey
+ * page with white panels. The verdict colours (breaking, unclear, safe) are
+ * status colours, not accents, and are used only to label state.
  *
- * Status colors (success, warning, info) are intentionally NOT themed —
- * they stay consistent across every preset.
+ * The values match the alert email (src/core/alert-email.ts, `COLOR`) and
+ * the unsubscribe pages (src/core/unsubscribe-page.ts), so a reader who
+ * comes from an email lands somewhere that looks the same. There is no theme
+ * switching (spec, "Out of Scope"). Components use the token names below
+ * (`bg-card`, `text-muted-foreground`, ...), never raw colours.
  */
 @theme {
-  /* shadcn core tokens — slate (default): neutral gray on near-black, indigo accent */
-  --color-background: #0a0a0a;
-  --color-foreground: #e8eaed;
-  --color-card: #161616;
-  --color-card-foreground: #e8eaed;
-  --color-popover: #161616;
-  --color-popover-foreground: #e8eaed;
-  --color-primary: #818cf8;
+  --color-background: #f3f4f6;
+  --color-foreground: #1f2328;
+  --color-card: #ffffff;
+  --color-card-foreground: #1f2328;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1f2328;
+  /* The accent. */
+  --color-primary: #0b57d0;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #1e1e1e;
-  --color-secondary-foreground: #e8eaed;
-  --color-muted: #1e1e1e;
-  --color-muted-foreground: #9ca3af;
-  --color-accent: #262626;
-  --color-accent-foreground: #e8eaed;
-  --color-destructive: #ef4444;
+  --color-secondary: #eef0f3;
+  --color-secondary-foreground: #1f2328;
+  --color-muted: #eef0f3;
+  --color-muted-foreground: #59636e;
+  /* shadcn's name for the hover surface of menus and outline buttons; not a second accent. */
+  --color-accent: #eef0f3;
+  --color-accent-foreground: #1f2328;
+  --color-destructive: #b42318;
   --color-destructive-foreground: #ffffff;
-  --color-border: rgba(60, 64, 67, 0.6);
-  --color-input: rgba(60, 64, 67, 0.6);
-  --color-ring: #818cf8;
-  --radius: 0.5rem;
+  --color-border: #d9dde3;
+  --color-input: #d0d5dc;
+  --color-ring: #0b57d0;
+  --radius: 0.375rem;
 
-  /*
-   * Map the rounded-* utilities onto --radius so a theme (or you) can change
-   * the app's shape language in one place. At the default 0.5rem these equal
-   * Tailwind's stock values, so there is no visual change until a theme
-   * overrides --radius.
-   */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  /* The rounded-* utilities follow --radius, so the shape language is set in one place. */
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 1px);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
 
-  /* Status colors — constant across all themes */
-  --color-success: #10b981;
+  /* Status colours: what a verdict, a scan or a send came to. Dark enough to read as text on their own 10% tint. */
+  --color-success: #1a7f37;
   --color-success-foreground: #ffffff;
-  --color-warning: #f59e0b;
+  --color-warning: #9a6700;
   --color-warning-foreground: #ffffff;
-  --color-info: #3b82f6;
+  --color-info: #0b57d0;
   --color-info-foreground: #ffffff;
 
-  /*
-   * Shadows — slate (default). Each theme in themes.css tunes these.
-   *
-   * Toned down 2026-05: previous values were 8px/12px offset with
-   * 32px/40px blur which read as a heavy halo under every Card on
-   * the page. New values are Linear/Stripe-style: barely-there at
-   * rest, slightly more present on hover.
-   *
-   * IMPORTANT: starter components (`Card`, `Dialog`, `CardGrid`,
-   * `Navigation`, `Toast`) intentionally use literal shadow values
-   * via `shadow-[…]` arbitrary-value classes, NOT the
-   * `shadow-card` / `shadow-card-hover` token classes Tailwind v4
-   * generates from this @theme block. Why: Tailwind's @theme directive
-   * compiles these tokens into the utility-class definitions at build
-   * time, and runtime [data-theme] overrides don't always cancel the
-   * baked baseline cleanly — apps switching themes were getting the
-   * slate value carried forward on the compiled `shadow-card` class.
-   * Sidestepping the token system in starter components is the
-   * deterministic fix. See docs/platform/theming-shadows.md.
-   */
-  --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.12);
-  --shadow-card-hover: 0 2px 8px 0 rgba(0, 0, 0, 0.16);
+  --shadow-card: 0 1px 2px 0 rgba(31, 35, 40, 0.06);
+  --shadow-card-hover: 0 2px 8px 0 rgba(31, 35, 40, 0.1);
 
-  /* Shell tokens: the area behind a multi-panel layout, and the raised
-     surface a page renders into. Used by templates whose (app)/_layout is a
-     shell (e.g. copilot's sidebar | panel | chat); a single-column layout
-     simply doesn't reference them. In every theme keep the panel reading as
-     elevated: dark → panel lighter than shell; light → white panel on a
-     faintly darker shell. */
-  --color-shell: #0a0a0a;
-  --color-shell-panel: #161616;
-
-  /* Animations */
-  --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
+  /* Versions, package names and the wordmark. */
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
-
-/* Theme override blocks live in `themes.css` — imported above. */
 
 /*
  * Animation keyframes for shadcn components.
@@ -152,9 +119,8 @@
  */
 @layer base {
   html {
-    /* Default to dark for native form controls (calendar icons, scrollbars).
-     * Light themes opt into `color-scheme: light` in themes.css. */
-    color-scheme: dark;
+    /* Native form controls and scrollbars in their light form. */
+    color-scheme: light;
   }
 
   html, body, #root {
@@ -164,7 +130,7 @@
   }
 
   body {
-    font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

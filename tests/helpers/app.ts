@@ -120,3 +120,45 @@ export async function askRecordRoom(page: Page, token: string | null, collection
   expect(answers, `the record room answered the ${collection} query`).toHaveLength(1)
   return { records: answers[0].payload?.records ?? [], raw: received.join('\n') }
 }
+
+export interface RosterEntry {
+  id: string
+  name?: string
+  email?: string
+}
+
+/**
+ * Asks the record room for its user roster (`user.list`), as this page's
+ * user or as a signed-out visitor when `token` is null. Returns the roster
+ * from the room's answer to that request, and everything the socket
+ * received, including any roster the room sent unasked when it connected.
+ */
+export async function askUserList(page: Page, token: string | null): Promise<{ users: RosterEntry[]; raw: string }> {
+  const received = await page.evaluate(
+    async ({ room, token }) => {
+      const url = new URL(`/ws/${encodeURIComponent(room)}`, window.location.origin)
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+      if (token) url.searchParams.set('token', token)
+      const received: string[] = []
+      const socket = new WebSocket(url)
+      socket.onmessage = (event) => received.push(String(event.data))
+      await new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve()
+        socket.onerror = () => reject(new Error('record room socket failed to open'))
+      })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const before = received.length
+      socket.send(JSON.stringify({ type: 'user.list', payload: {} }))
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      socket.close()
+      return { all: received, answer: received.slice(before) }
+    },
+    { room: RECORD_ROOM, token },
+  )
+  const answers = received.answer
+    .map((text) => JSON.parse(text) as { type: string; payload?: { users?: RosterEntry[] } })
+    .filter((message) => message.type === 'user.list')
+  // The room must have answered, or "it listed nobody" would mean nothing.
+  expect(answers.length, 'the record room answered user.list').toBeGreaterThan(0)
+  return { users: answers[answers.length - 1].payload?.users ?? [], raw: received.all.join('\n') }
+}

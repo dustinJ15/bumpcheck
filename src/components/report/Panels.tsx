@@ -14,7 +14,7 @@ export function Panel({ children }: { children: ReactNode }) {
 
 export function ErrorPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+    <div role="alert" className="rounded-lg border border-l-4 border-destructive/30 border-l-destructive bg-card px-4 py-3 text-sm">
       <p className="font-medium text-destructive">{title}</p>
       <p className="mt-1 text-muted-foreground">{children}</p>
     </div>

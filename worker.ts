@@ -19,9 +19,6 @@ import {
   YjsRoom,
 } from 'deepspace/worker'
 import type { DOBindings, DOManifest, Job, JobContext } from 'deepspace/worker'
-import { AI_CHATS_SCHEMA } from 'deepspace/schema'
-import { registerAgent } from './src/ai/agent.js'
-import { buildTools } from './src/ai/tools.js'
 import { tasks as cronTasks, runTask as runCronTask } from './src/cron.js'
 import { runJob } from './src/jobs.js'
 import { schemas } from './src/schemas.js'
@@ -168,18 +165,16 @@ app.use('*', async (c, next) => {
 })
 
 // Registration order is part of the worker contract. The wildcard auth route
-// follows its special cases, AI precedes platform proxies, and static is last.
+// follows its special cases, and static is last.
 registerAuthAndIntegrationRoutes(app)
 registerRealtimeRoutes(app)
 registerActionRoutes(app, resolveAuth)
 // bumpcheck: the public unsubscribe link (GET shows a page, POST turns alerts off).
 registerUnsubscribeRoute(app)
-// Every scaffold exposes selected tools through HTTP, MCP and browser tools.
-// Only copilot owns the collections needed for the in-app chat UI.
-registerAgent(app, {
-  tools: buildTools,
-  inApp: schemas.some((schema) => schema.name === AI_CHATS_SCHEMA.name),
-})
+// bumpcheck registers no assistant routes: the scaffold's AI chat and its
+// record tools for a local assistant are not used (spec, "Out of Scope"). The
+// one AI call the app makes is the judge, from server code
+// (src/services/claude-judge.ts).
 registerPlatformProxyRoutes(app)
 registerStaticRoutes(app)
 

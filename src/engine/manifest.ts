@@ -24,7 +24,7 @@ export type ManifestReading =
 export async function readRepoManifest(sourceHost: SourceHost, repo: RepoRef): Promise<ManifestReading> {
   const info = await sourceHost.getRepo(repo)
   if (info === null) {
-    return problem('repo-not-found', 'The repository was not found or is not public.')
+    return problem('repo-not-found', 'The repository was not found or is not public. bumpcheck reads public repositories only.')
   }
 
   const text = await sourceHost.getFile(repo, 'package.json', info.defaultBranch)

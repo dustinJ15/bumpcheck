@@ -3,7 +3,8 @@
  * not part of the app's React pages: the reader is signed out, may be
  * arriving from a mail client's built-in browser, and needs nothing but a
  * sentence and at most one button. No script, image, font or stylesheet is
- * loaded.
+ * loaded. The colours and the mark are the app's own (src/styles.css), so the
+ * page looks like the rest of bumpcheck.
  *
  * Every value put into a page is escaped: the repo name comes from a
  * project row, the token from the address bar.
@@ -36,32 +37,26 @@ export function renderUnsubscribePage(page: UnsubscribePage): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 <title>${escapeHtml(title)} · bumpcheck</title>
 <style>
   body { margin: 0; padding: 48px 16px; background: #f3f4f6; color: #1f2328;
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
   main { max-width: 480px; margin: 0 auto; padding: 24px; background: #ffffff;
-    border: 1px solid #d9dde3; border-radius: 8px; }
+    border: 1px solid #d9dde3; border-radius: 7px; }
   h1 { margin: 0 0 12px; font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
   p { margin: 0 0 12px; color: #59636e; font-size: 14px; }
-  .brand { margin: 0 0 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px; color: #59636e; }
-  button { margin: 4px 0 12px; padding: 10px 18px; border: 0; border-radius: 6px; background: #1f2328;
+  .brand { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: #1f2328; font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+  .brand svg { width: 20px; height: 20px; }
+  button { margin: 4px 0 12px; padding: 9px 16px; border: 0; border-radius: 6px; background: #0b57d0;
     color: #ffffff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
   a { color: #0b57d0; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #0d1117; color: #e6edf3; }
-    main { background: #161b22; border-color: #30363d; }
-    p, .brand { color: #9198a1; }
-    button { background: #e6edf3; color: #0d1117; }
-    a { color: #79b8ff; }
-  }
 </style>
 </head>
 <body>
 <main data-page="${page.kind}">
-  <p class="brand">bumpcheck</p>
+  <p class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#0b57d0"/><path d="M16 7 L24 16 H19 V25 H13 V16 H8 Z" fill="#ffffff"/></svg>bumpcheck</p>
   <h1>${escapeHtml(title)}</h1>
 ${body}
   <p><a href="/">Go to bumpcheck</a></p>

@@ -172,3 +172,20 @@ describe('projects: scan bookkeeping', () => {
     expect(schema('projects').columns.map((c) => c.name)).toContain('scanHeartbeatAt')
   })
 })
+
+describe('users (the platform collection)', () => {
+  const s = schema('users')
+  const alice = { data: { email: 'alice@example.test', name: 'Alice' }, createdBy: 'alice', recordId: 'alice' }
+
+  it('lets a viewer or member read only their own row; the app owner reads all', () => {
+    for (const role of ['viewer', 'member'] as const) {
+      expect(canRead(s, role, alice, 'alice')).toBe(true)
+      expect(canRead(s, role, alice, 'bob')).toBe(false)
+    }
+    expect(canRead(s, 'admin', alice, 'owner')).toBe(true)
+  })
+
+  it("applies the same rule to the room's user list, not the platform's public roster", () => {
+    expect(s.roster).toBe('read-policy')
+  })
+})

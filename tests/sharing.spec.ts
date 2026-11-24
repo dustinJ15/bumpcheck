@@ -25,7 +25,7 @@ import type { Locator, Page } from '@playwright/test'
 import { EXAMPLE_PROJECT_ID } from '../src/config'
 import { PUBLIC_REPORT_COLUMNS } from '../src/core/public-report'
 import { FAKE_OWNER } from '../src/services/fake-world'
-import { addProject, askRecordRoom, authToken, callAction, capturePath, RECORD_ROOM, resetProjects, type WireRecord } from './helpers/app'
+import { addProject, askRecordRoom, askUserList, authToken, callAction, capturePath, RECORD_ROOM, resetProjects, type WireRecord } from './helpers/app'
 
 const usableTestAccounts = loadAllTestAccounts().length
 test.skip(usableTestAccounts < 2, `Needs the 2 test accounts (Alice and Bob), found ${usableTestAccounts}.`)
@@ -330,6 +330,51 @@ test('another signed-in user reads a public report the same way: no actions, no 
   await bob.page.goto(`/projects/${projectId}/settings`)
   await expect(bob.page.getByTestId('project-not-available')).toBeVisible({ timeout: 15_000 })
   await expect(bob.page.getByRole('switch')).toHaveCount(0)
+})
+
+test('nobody but the user themself reads their name or email from the users collection; the nav still shows your own', async ({ users, page: visitor }) => {
+  const [alice, bob] = await users(['Alice', 'Bob'])
+  const aliceIs = await identityOf(alice)
+  const bobIs = await identityOf(bob)
+
+  // Each signed-in page shows its own account in the nav's identity chip.
+  for (const [user, who] of [
+    [alice, aliceIs],
+    [bob, bobIs],
+  ] as const) {
+    await user.page.goto('/projects')
+    await expect(user.page.getByTestId('nav-user-name')).toHaveText(who.name, { timeout: 15_000 })
+    await user.page.getByRole('button', { name: 'Account menu' }).click()
+    await expect(user.page.getByTestId('nav-user-email')).toHaveText(who.email)
+    await user.page.keyboard.press('Escape')
+  }
+
+  // Bob, a member, asks the record room directly: the users rows, and the roster.
+  const bobToken = await authToken(bob.page)
+  const rows = await askRecordRoom(bob.page, bobToken, 'users')
+  expect(rows.records.map((record) => record.recordId)).toEqual([bobIs.id])
+  const roster = await askUserList(bob.page, bobToken)
+  expect(roster.users.map((user) => user.id)).toEqual([bobIs.id])
+  for (const raw of [rows.raw, roster.raw]) {
+    expect(raw).not.toContain(aliceIs.id)
+    expect(raw).not.toContain(aliceIs.email)
+    expect(raw).not.toContain(aliceIs.name)
+  }
+
+  // A signed-out visitor gets no one at all.
+  await visitor.goto('/share/nothing-here')
+  await expect(visitor.getByTestId('public-report-not-available')).toBeVisible({ timeout: 15_000 })
+  const visitorRows = await askRecordRoom(visitor, null, 'users')
+  expect(visitorRows.records).toEqual([])
+  const visitorRoster = await askUserList(visitor, null)
+  expect(visitorRoster.users).toEqual([])
+  for (const raw of [visitorRows.raw, visitorRoster.raw]) {
+    for (const who of [aliceIs, bobIs]) {
+      expect(raw).not.toContain(who.id)
+      expect(raw).not.toContain(who.email)
+      expect(raw).not.toContain(who.name)
+    }
+  }
 })
 
 test('a private project\'s link shows "not available", signed-out and to Bob, exactly like a link to nothing', async ({ users, page: visitor }) => {

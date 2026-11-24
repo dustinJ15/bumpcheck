@@ -163,7 +163,7 @@ test('a repo that cannot be scanned is refused with the reason, inline', async (
   await expect(error).toHaveText('Enter a public GitHub repository as owner/repo or a github.com URL.')
 
   await addThroughForm(alice.page, `${FAKE_OWNER}/does-not-exist`)
-  await expect(error).toHaveText('The repository was not found or is not public.')
+  await expect(error).toHaveText('The repository was not found or is not public. bumpcheck reads public repositories only.')
 
   await addThroughForm(alice.page, `${FAKE_OWNER}/no-manifest`)
   await expect(error).toHaveText('The repository has no package.json at its root.')

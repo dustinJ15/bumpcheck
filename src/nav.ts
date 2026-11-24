@@ -17,8 +17,6 @@ export interface NavItem {
 
 export const nav: NavItem[] = [
   { path: '/projects', label: 'Projects' },
-  { path: '/settings', label: 'Settings' },
-  // The /api-status debug page still exists — add
-  // `{ path: '/api-status', label: 'API Status', devOnly: true }` to surface it.
-  // ── Features add nav items below this line ──
+  // Each project's settings are reached from its own page. Your account (name,
+  // email, sign out) is in the account menu at the right of the bar.
 ]

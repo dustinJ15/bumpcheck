@@ -105,11 +105,12 @@ export function ScanNotices(props: {
 
 type Tone = 'info' | 'warning' | 'error' | 'neutral'
 
+// A white panel with a coloured left edge: the colour says what kind of notice it is, the text stays on white.
 const TONE: Record<Tone, { box: string; badge: BadgeProps['variant'] }> = {
-  info: { box: 'border-info/50 bg-info/10', badge: 'info' },
-  warning: { box: 'border-warning/50 bg-warning/10', badge: 'warning' },
-  error: { box: 'border-destructive/40 bg-destructive/10', badge: 'destructive' },
-  neutral: { box: 'border-border bg-card', badge: 'secondary' },
+  info: { box: 'border-info/30 border-l-info', badge: 'info' },
+  warning: { box: 'border-warning/40 border-l-warning', badge: 'warning' },
+  error: { box: 'border-destructive/30 border-l-destructive', badge: 'destructive' },
+  neutral: { box: 'border-border border-l-muted-foreground', badge: 'secondary' },
 }
 
 /** One notice: a coloured label that names its kind, a title, a sentence or two, and an optional button. */
@@ -119,7 +120,7 @@ function Notice(props: { testId: string; tone: Tone; label: string; title: strin
     <div
       data-testid={props.testId}
       role={props.tone === 'error' ? 'alert' : 'status'}
-      className={`flex flex-col gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-start sm:justify-between ${tone.box}`}
+      className={`flex flex-col gap-3 rounded-lg border border-l-4 bg-card px-4 py-3 text-sm sm:flex-row sm:items-start sm:justify-between ${tone.box}`}
     >
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 font-medium">

@@ -40,10 +40,10 @@ npx deepspace add --list   # list optional features (messaging, etc.)
 npx deepspace add <feature>
 ```
 
-`worker.ts` already exposes the tools from `src/ai/tools.ts` over HTTP, MCP and
-browser tools; add tools there instead of registering the routes again. For
-local app tools, always run `agent tools` first and follow the returned
-description and input schema rather than guessing arguments. `agent invoke`
+bumpcheck removed the scaffold's assistant routes (`src/ai/`, `registerAgent`
+in `worker.ts`), so `agent tools` and `agent invoke` find no tools for this app.
+If they are ever added back, always run `agent tools` first and follow the
+returned description and input schema rather than guessing arguments. `agent invoke`
 reuses the current CLI login and requires no separate connection. If it reports
 `not_authenticated`, run the refusal's action when present. In a
 headless shell without an action, run `npx deepspace auth login --help` and use
