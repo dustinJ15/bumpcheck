@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>bumpcheck: 3 new breaking upgrades in dustinj15/bumpcheck-example</title>
+<style>
+  @media (prefers-color-scheme: dark) {
+    .bc-page { background: #0d1117 !important; }
+    .bc-card { background: #161b22 !important; border-color: #30363d !important; }
+    .bc-rule { border-color: #30363d !important; }
+    .bc-text { color: #e6edf3 !important; }
+    .bc-muted { color: #9198a1 !important; }
+    .bc-breaking { color: #ff8182 !important; }
+    .bc-link { color: #79b8ff !important; }
+    .bc-button { background: #e6edf3 !important; color: #0d1117 !important; }
+  }
+</style>
+</head>
+<body class="bc-page" style="margin:0;padding:0;background:#f3f4f6;">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#f3f4f6;">Express 5 removes several long-deprecated request and response helpers and changes how route paths are matched.</div>
+<table role="presentation" class="bc-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
+        <tr>
+          <td class="bc-card" style="background:#ffffff;border:1px solid #d9dde3;border-radius:8px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+            <tr>
+              <td style="padding:24px 24px 16px 24px;">
+                <h1 class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;margin:0;font-size:20px;line-height:28px;font-weight:bold;">3 new breaking upgrades in dustinj15/bumpcheck-example</h1>
+                <p class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;margin:12px 0 0 0;font-size:14px;line-height:21px;">bumpcheck read the changelogs for dustinj15/bumpcheck-example and found 3 upgrades that will break existing code. Each is listed here with what changed and the first thing to do.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="bc-rule" style="padding:16px 24px;border-top:1px solid #d9dde3;">
+                <div class="bc-text" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;font-size:15px;line-height:22px;font-weight:bold;color:#1f2328;word-break:break-all;">express</div>
+                <div style="font-size:13px;line-height:20px;">
+                  <span class="bc-breaking" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;color:#b42318;">4.18.2 → 5.1.0</span>
+                  <span class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;padding-left:8px;">runtime dependency</span>
+                </div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;">Express 5 removes several long-deprecated request and response helpers and changes how route paths are matched.</div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;"><strong>What to do first:</strong> Replace `app.del()` with `app.delete()`, and `req.param(name)` with `req.params`, `req.body` or `req.query`.</div>
+                <div class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;font-size:13px;line-height:20px;padding-top:8px;">3 more changes are listed in the report.</div>
+                <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;font-size:13px;line-height:20px;padding-top:8px;"><a class="bc-link" href="https://github.com/expressjs/express/blob/HEAD/History.md" style="color:#0b57d0;text-decoration:underline;">Changelog</a></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="bc-rule" style="padding:16px 24px;border-top:1px solid #d9dde3;">
+                <div class="bc-text" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;font-size:15px;line-height:22px;font-weight:bold;color:#1f2328;word-break:break-all;">zod</div>
+                <div style="font-size:13px;line-height:20px;">
+                  <span class="bc-breaking" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;color:#b42318;">3.22.4 → 4.1.5</span>
+                  <span class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;padding-left:8px;">runtime dependency</span>
+                </div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;">Zod 4 changes error customisation: the `message`, `invalid_type_error` and `required_error` options are replaced by a single `error` option.</div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;"><strong>What to do first:</strong> Replace `{ message: &quot;...&quot; }` with `{ error: &quot;...&quot; }` in schema definitions.</div>
+                <div class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;font-size:13px;line-height:20px;padding-top:8px;">1 more change is listed in the report.</div>
+                <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;font-size:13px;line-height:20px;padding-top:8px;"><a class="bc-link" href="https://github.com/colinhacks/zod/releases" style="color:#0b57d0;text-decoration:underline;">Changelog</a></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="bc-rule" style="padding:16px 24px;border-top:1px solid #d9dde3;">
+                <div class="bc-text" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;font-size:15px;line-height:22px;font-weight:bold;color:#1f2328;word-break:break-all;">@types/node</div>
+                <div style="font-size:13px;line-height:20px;">
+                  <span class="bc-breaking" style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;color:#b42318;">18.19.0 → 24.0.3</span>
+                  <span class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;padding-left:8px;">dev dependency</span>
+                </div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;">The types now describe Node 24: APIs removed since Node 18 are gone from the typings.</div>
+                <div class="bc-text" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#1f2328;font-size:14px;line-height:21px;padding-top:8px;"><strong>What to do first:</strong> Run the type checker and replace any API it no longer finds, such as `url.parse()` with `new URL()`.</div>
+              </td>
+            </tr>
+            <tr>
+              <td class="bc-rule" style="padding:20px 24px 24px 24px;border-top:1px solid #d9dde3;">
+                <a class="bc-button" href="https://bumpcheck.app.space/projects/sample-project-id" style="display:inline-block;background:#1f2328;color:#ffffff;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;font-size:14px;line-height:20px;font-weight:bold;text-decoration:none;padding:10px 18px;border-radius:6px;">Open the full report</a>
+              </td>
+            </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px 0 24px;">
+            <p class="bc-muted" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;color:#59636e;margin:0;font-size:12px;line-height:18px;">You are getting this email because email alerts are on for dustinj15/bumpcheck-example in bumpcheck. It was sent to the address you sign in with. bumpcheck does not email you about the same verdict twice.</p>
+            <p style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;margin:8px 0 0 0;font-size:12px;line-height:18px;"><a class="bc-link" href="https://bumpcheck.app.space/api/unsubscribe?token=c2FtcGxlLXByb2plY3QtaWQ.jJaBnvIK_4jgDu48WabNm3hDkpymh-TAGF_RYeDopC8" style="color:#0b57d0;text-decoration:underline;">Stop these emails for this project, no sign-in needed</a></p>
+            <p style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;margin:4px 0 0 0;font-size:12px;line-height:18px;"><a class="bc-link" href="https://bumpcheck.app.space/projects/sample-project-id/settings" style="color:#0b57d0;text-decoration:underline;">Alert settings</a></p>
+            <p class="bc-muted" style="margin:12px 0 0 0;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;font-size:12px;line-height:18px;color:#59636e;">bumpcheck</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

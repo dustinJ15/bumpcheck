@@ -7,6 +7,7 @@ import checker from 'vite-plugin-checker'
 import { deepspaceBuild } from 'deepspace/build'
 import { prerender } from './prerender.ts'
 import { fakeServicesWorkerVars } from './src/services/mode.ts'
+import { localOriginWorkerVars } from './src/core/app-origin.ts'
 
 const appDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -22,10 +23,14 @@ export default defineConfig(({ command }) => ({
     //
     // `config.vars` forwards bumpcheck's fake-services setting from the shell
     // to the worker, for the dev/test server only; a build never gets it.
-    // See src/services/mode.ts.
+    // See src/services/mode.ts. The same goes for the local server's own
+    // address, which emails sent from it use for their links
+    // (src/core/app-origin.ts).
     cloudflare({
       inspectorPort: false,
-      config: { vars: fakeServicesWorkerVars(command, process.env) },
+      config: {
+        vars: { ...fakeServicesWorkerVars(command, process.env), ...localOriginWorkerVars(command, process.env) },
+      },
     }),
     // The app id `define`, the preview-secret cleanup, and the client dedupe
     // hint — all shipped by the SDK so a fix to any of them arrives with a

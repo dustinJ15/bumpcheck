@@ -19,21 +19,19 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { test, expect, loadAllTestAccounts } from 'deepspace/testing'
 import type { Locator, Page } from '@playwright/test'
 import { EXAMPLE_PROJECT_ID } from '../src/config'
 import { PUBLIC_REPORT_COLUMNS } from '../src/core/public-report'
 import { FAKE_OWNER } from '../src/services/fake-world'
-import { addProject, authToken, callAction, capturePath, resetProjects } from './helpers/app'
+import { addProject, askRecordRoom, authToken, callAction, capturePath, RECORD_ROOM, resetProjects, type WireRecord } from './helpers/app'
 
 const usableTestAccounts = loadAllTestAccounts().length
 test.skip(usableTestAccounts < 2, `Needs the 2 test accounts (Alice and Bob), found ${usableTestAccounts}.`)
 
 const DEMO = `${FAKE_OWNER}/demo`
 const fake = (name: string) => `@${FAKE_OWNER}/${name}`
-const APP_ID = /DEEPSPACE_APP_ID\s*=\s*"([^"]+)"/.exec(readFileSync('wrangler.toml', 'utf8'))?.[1]
-const RECORD_ROOM = `app:${APP_ID}`
 
 /** Every button the owner's project page has. None may be on the public view. */
 const OWNER_ACTIONS = /scan now|check this one|mark as reviewed|retry|undo/i
@@ -125,46 +123,6 @@ function recordWire(page: Page) {
       return found
     },
   }
-}
-
-interface WireRecord {
-  recordId: string
-  createdBy: string
-  data: Record<string, unknown>
-}
-
-/**
- * Asks the record room directly, as this page's user (or as a signed-out
- * visitor when `token` is null), for every row of a collection it will
- * give. This is the server's answer, with no page code in between.
- */
-async function askRecordRoom(page: Page, token: string | null, collection: string): Promise<{ records: WireRecord[]; raw: string }> {
-  const received = await page.evaluate(
-    async ({ room, token, collection }) => {
-      const url = new URL(`/ws/${encodeURIComponent(room)}`, window.location.origin)
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      if (token) url.searchParams.set('token', token)
-      const received: string[] = []
-      const socket = new WebSocket(url)
-      socket.onmessage = (event) => received.push(String(event.data))
-      await new Promise<void>((resolve, reject) => {
-        socket.onopen = () => resolve()
-        socket.onerror = () => reject(new Error('record room socket failed to open'))
-      })
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      socket.send(JSON.stringify({ type: 'core.subscribe', payload: { subscriptionId: 'test-probe', query: { collection } } }))
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      socket.close()
-      return received
-    },
-    { room: RECORD_ROOM, token, collection },
-  )
-  const answers = received
-    .map((text) => JSON.parse(text) as { type: string; payload?: { subscriptionId?: string; records?: WireRecord[] } })
-    .filter((message) => message.type === 'core.query_result' && message.payload?.subscriptionId === 'test-probe')
-  // The room must have answered, or "it sent no rows" would mean nothing.
-  expect(answers, `the record room answered the ${collection} query`).toHaveLength(1)
-  return { records: answers[0].payload?.records ?? [], raw: received.join('\n') }
 }
 
 /** The page fits its window: nothing forces a sideways scroll. */

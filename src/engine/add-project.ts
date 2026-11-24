@@ -16,7 +16,7 @@
  */
 
 import { LIMITS } from '../config'
-import { mayAddProject, mayAttemptAddProject, nextUtcDayStart } from '../core/limits'
+import { mayAddProject, mayAttemptAddProject, waitUntilNextUtcDay } from '../core/limits'
 import type { RepoRef } from '../core/model'
 import { parseRepoInput } from '../core/repo-input'
 import type { SourceHost } from '../services/types'
@@ -58,10 +58,7 @@ export function duplicateMessage(repo: RepoRef): string {
 
 /** Says when the limit resets: daily counters are keyed by UTC day. */
 export function attemptLimitMessage(now: number): string {
-  const minutes = Math.ceil((nextUtcDayStart(now) - now) / 60_000)
-  const hours = Math.ceil(minutes / 60)
-  const wait = minutes >= 60 ? `${hours} ${hours === 1 ? 'hour' : 'hours'}` : `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`
-  return `You have tried to add a project ${LIMITS.addAttemptsPerUserPerDay} times today, which is the daily limit. You can try again after midnight UTC, in about ${wait}.`
+  return `You have tried to add a project ${LIMITS.addAttemptsPerUserPerDay} times today, which is the daily limit. You can try again after midnight UTC, in about ${waitUntilNextUtcDay(now)}.`
 }
 
 export async function checkNewProject(

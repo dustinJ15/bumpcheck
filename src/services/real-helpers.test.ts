@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { isNotFound, readFileText, readReleases, readReleasesAnswer, readRepoInfo, releasesApiUrl } from './github-source-host'
 import { npmDocumentUrl, npmLatestUrl, parseRepositoryField } from './npm-registry'
+import { EMAIL_SEND_ENDPOINT, emailSendInput, readEmailSendReply } from './email-mailer'
 
 describe('npm registry URLs', () => {
   it('builds the latest-version URL', () => {
@@ -175,5 +176,57 @@ describe('the Releases fallback', () => {
       expect(readReleasesAnswer(200, { message: 'what' }, source)).toEqual({ status: 'refused' })
       expect(readReleasesAnswer(200, null, source)).toEqual({ status: 'refused' })
     })
+  })
+})
+
+describe('the email integration call', () => {
+  // The catalog's input schema for email/send (deepspace 0.44.2): to and
+  // subject are required; html, text, reply_to and headers are accepted;
+  // a "from" is ignored by the platform.
+  const message = {
+    to: 'dustin@example.test',
+    subject: 'bumpcheck: 1 new breaking upgrade in dustin/app',
+    html: '<p>hello</p>',
+    text: 'hello',
+    headers: { 'List-Unsubscribe': '<https://bumpcheck.example/api/unsubscribe?token=a.b>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  }
+
+  it('goes to email/send', () => {
+    expect(EMAIL_SEND_ENDPOINT).toBe('email/send')
+  })
+
+  it('passes the recipient, subject, both bodies and the headers through', () => {
+    expect(emailSendInput(message)).toEqual({
+      to: 'dustin@example.test',
+      subject: message.subject,
+      html: '<p>hello</p>',
+      text: 'hello',
+      headers: message.headers,
+    })
+  })
+
+  it('never names a sender: the platform always sends from its own address', () => {
+    expect(Object.keys(emailSendInput(message))).not.toContain('from')
+  })
+
+  it('passes a reply-to through as reply_to when the message has one, and leaves it out otherwise', () => {
+    expect(emailSendInput({ ...message, replyTo: 'help@example.test' })).toMatchObject({ reply_to: 'help@example.test' })
+    expect(Object.keys(emailSendInput(message))).not.toContain('reply_to')
+  })
+
+  it('sends to exactly one address: no cc, no bcc, and "to" is a single string', () => {
+    const input = emailSendInput(message)
+    expect(typeof input.to).toBe('string')
+    expect(Object.keys(input)).not.toContain('cc')
+    expect(Object.keys(input)).not.toContain('bcc')
+  })
+
+  it('reads a successful reply as sent', () => {
+    expect(readEmailSendReply({ success: true, data: { id: 'abc' } })).toEqual({ ok: true })
+  })
+
+  it('reads a failed reply as a failure with the reason, never as sent', () => {
+    expect(readEmailSendReply({ success: false, error: 'Rate limit exceeded', status: 429 })).toEqual({ ok: false, error: 'Rate limit exceeded' })
+    expect(readEmailSendReply({ success: false, error: '' })).toEqual({ ok: false, error: 'The email service refused the message.' })
   })
 })

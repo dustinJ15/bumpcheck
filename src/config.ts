@@ -32,6 +32,12 @@ export const LIMITS = {
   /** Alert emails one project may send per UTC day. */
   alertEmailsPerProjectPerDay: 1,
   /**
+   * Times bumpcheck tries to email one verdict: the first send and, if that
+   * fails, one retry after the next scan. After that the verdict is left as
+   * failed in the send log and is not tried again.
+   */
+  alertSendAttemptsPerVerdict: 2,
+  /**
    * Add-project attempts one user may make per UTC day. An attempt is a
    * request that gets as far as GitHub: each one costs the owner one or two
    * GitHub calls even when the repo is then refused. The app owner is exempt.
@@ -56,6 +62,17 @@ export const SCHEDULE = {
    * minutes at most and writes progress as it goes, so twice that is safe.
    */
   stalledScanMs: 30 * MINUTE_MS,
+} as const
+
+/** Email alerts (src/engine/alert.ts). */
+export const ALERT_EMAIL = {
+  /**
+   * Where a reply to an alert goes. Null: no reply-to is set, and a reply
+   * goes to the platform's shared sending address, which nobody reads. Put
+   * an address here to receive replies. (The sender itself cannot be
+   * changed: the email integration always sends from the platform's address.)
+   */
+  replyTo: null as string | null,
 } as const
 
 export const JUDGE = {

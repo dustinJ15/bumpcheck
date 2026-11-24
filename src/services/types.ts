@@ -8,7 +8,7 @@
  */
 
 import type { ReleaseNote } from '../core/changelog'
-import type { ProjectScanFields, RepoRef, SourceRepo, Verdict } from '../core/model'
+import type { AlertLogEntry, ProjectScanFields, RepoRef, SourceRepo, Verdict } from '../core/model'
 import type { VerdictPromptInput, VerdictResponse } from '../core/verdict'
 
 // ---------------------------------------------------------------- registry
@@ -99,11 +99,17 @@ export interface MailMessage {
   html: string
   text: string
   headers: Record<string, string>
+  /** Where a reply goes. Left out when the app has no address for replies (src/config.ts). */
+  replyTo?: string
 }
 
 export type MailResult = { ok: true } | { ok: false; error: string }
 
-/** Sends one composed message. Real: the email integration (ticket 06). */
+/**
+ * Sends one composed message. Real: the email integration
+ * (./email-mailer.ts). The sender is not part of a message: the integration
+ * always sends from the platform's shared address.
+ */
 export interface Mailer {
   send(message: MailMessage): Promise<MailResult>
 }
@@ -117,6 +123,12 @@ export interface ProjectRecord extends ProjectScanFields {
   userId: string
   /** ISO time the owner last opened the project's page. Written by a server action, read by the schedule. */
   lastOpenedAt: string | null
+  /** Verdict keys the owner marked as reviewed. Written by a server action, read by the alert step. */
+  reviewedKeys: string[]
+  /** The owner's alert setting. Off unless they turned it on. */
+  alertsEnabled: boolean
+  /** Verdict keys an alert email has already covered. Written by the alert step only. */
+  alertedKeys: string[]
 }
 
 /**
@@ -135,6 +147,27 @@ export interface RecordStore {
   getAiCalls(day: string): Promise<number>
   /** Counts one more AI call on a UTC day. Returns the new total. */
   addAiCall(day: string): Promise<number>
+}
+
+/**
+ * The records the alert step reads and writes (src/engine/alert.ts). Real:
+ * the same record room, through the same class as `RecordStore`.
+ */
+export interface AlertStore {
+  getProject(projectId: string): Promise<ProjectRecord | null>
+  getVerdict(key: string): Promise<Verdict | null>
+  /**
+   * The address a user signs in with, from the platform's own record of the
+   * user. Null when there is none on record. This is the only place an
+   * email's recipient comes from.
+   */
+  getUserEmail(userId: string): Promise<string | null>
+  /** A project's send log, in any order. */
+  listAlerts(projectId: string): Promise<AlertLogEntry[]>
+  /** Adds one line to the send log. */
+  addAlert(entry: AlertLogEntry): Promise<void>
+  /** Replaces the project's list of verdict keys already alerted. */
+  setAlertedKeys(projectId: string, alertedKeys: string[]): Promise<void>
 }
 
 // ------------------------------------------------------------------- clock

@@ -9,12 +9,15 @@
 import type { ActionHandler } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { addProject } from './add-project'
+import { sendTestEmailAction, setAlerts, testEmailAllowance } from './alerts'
+import { deleteProject } from './delete-project'
 import { checkDependency, retryVerdict } from './on-demand'
 import { markReviewed, recordOpened, undoReviewed } from './review'
 import { scanNow } from './scan-now'
 import { setVisibility } from './visibility'
 import {
   testPublishExample,
+  testReadOutbox,
   testResetFakeWorld,
   testResetMyProjects,
   testRunScheduledTask,
@@ -34,6 +37,11 @@ export const actions: Record<string, ActionHandler<Env>> = {
   'scan-now': scanNow,
   // Public sharing (ticket 05). Checks ownership first, like the rest.
   'set-visibility': setVisibility,
+  // Email alerts and delete (ticket 06). The project actions check ownership first.
+  'set-alerts': setAlerts,
+  'send-test-email': sendTestEmailAction,
+  'test-email-allowance': testEmailAllowance,
+  'delete-project': deleteProject,
   // Test-only; each refuses unless the fake-services setting is on. See the file.
   'test-reset-my-projects': testResetMyProjects,
   'test-reset-fake-world': testResetFakeWorld,
@@ -41,4 +49,5 @@ export const actions: Record<string, ActionHandler<Env>> = {
   'test-use-up-daily-ai-limit': testUseUpDailyAiLimit,
   'test-run-scheduled-task': testRunScheduledTask,
   'test-publish-example': testPublishExample,
+  'test-read-outbox': testReadOutbox,
 }

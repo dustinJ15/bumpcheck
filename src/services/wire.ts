@@ -4,7 +4,8 @@
  * `servicesMode(env)` (./mode.ts) decides. With the fake-services setting on
  * (the local test server only), the registry, source host and judge are the
  * fakes in ./fake-world.ts and no real implementation is even constructed.
- * Otherwise they are npm, GitHub and Claude.
+ * Otherwise they are npm, GitHub and Claude. The mailer is chosen the same
+ * way (`buildAlertServices`).
  *
  * Records are never faked here: both modes write to the record room through
  * the server-side record tools passed in.
@@ -16,12 +17,16 @@
 
 import type { ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { noAlerts, type ScanServices } from '../engine/scan'
+import { appOrigin } from '../core/app-origin'
+import { alertHookFor, type AlertServices } from '../engine/alert'
+import type { ScanServices } from '../engine/scan'
 import { ClaudeJudge } from './claude-judge'
+import { EmailMailer } from './email-mailer'
 import { buildFakeWorld } from './fake-world'
 import { GitHubSourceHost } from './github-source-host'
 import { servicesMode } from './mode'
 import { NpmRegistry } from './npm-registry'
+import { OutboxMailer } from './outbox-mailer'
 import { RecordRoomStore, systemClock } from './record-room-store'
 import type { SourceHost } from './types'
 
@@ -39,8 +44,37 @@ export function buildScanServices(env: Env, tools: ActionTools): ScanServices {
     ...outside,
     store: new RecordRoomStore(tools),
     clock: systemClock,
-    // Ticket 06 supplies the real alert step.
-    alertHook: noAlerts,
+    // After a successful full scan: the alert step (src/engine/alert.ts).
+    alertHook: alertHookFor(buildAlertServices(env, tools), (outcome) => {
+      // What happened, for the worker's log: sent or not, and why not. No
+      // address, key or token is in an outcome. A failed send's reason is
+      // the mail service's own words, so it goes to the project's send log
+      // (which only its owner reads) and not here.
+      const reason = !outcome.sent && outcome.why === 'error' ? ` ${outcome.reason}` : ''
+      console.info(`[alert] ${outcome.sent ? `sent, ${outcome.verdictKeys.length} verdicts` : `not sent: ${outcome.why}`}${reason}`)
+    }),
+  }
+}
+
+/**
+ * Everything an email needs. Used by the scan job (through the alert hook
+ * above) and by the test-email action.
+ *
+ * With the fake-services setting on, the mailer sends nothing: it writes
+ * each message to the `outbox` collection. Otherwise it is the email
+ * integration, which `tools.integration` bills to the app owner.
+ *
+ * This is the one place the unsubscribe signing key is read for sending.
+ * It goes to the alert step as an argument and from there into the signed
+ * link; it is never logged or returned.
+ */
+export function buildAlertServices(env: Env, tools: ActionTools): AlertServices {
+  return {
+    store: new RecordRoomStore(tools),
+    mailer: servicesMode(env) === 'fake' ? new OutboxMailer(tools, systemClock) : new EmailMailer(tools.integration),
+    clock: systemClock,
+    appOrigin: appOrigin(env),
+    signingKey: env.UNSUBSCRIBE_SIGNING_KEY,
   }
 }
 

@@ -7,8 +7,8 @@ import { chromiumLaunchOptions } from 'deepspace/testing'
  *
  * This config differs from tests/playwright.config.ts in exactly the way
  * that matters: the local server is started WITHOUT the fake-services
- * setting, so the worker uses real GitHub, real npm and real Claude, billed
- * to the app owner's account.
+ * setting, so the worker uses real GitHub, real npm, real Claude and the
+ * real email integration, billed to the app owner's account.
  *
  * Its one test file ends in `.live.ts`, not `.spec.ts`, so the normal test
  * config (and so the gate, and `deepspace test run`) can never pick it up.

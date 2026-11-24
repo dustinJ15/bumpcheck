@@ -23,7 +23,7 @@ function row(data: Record<string, unknown>) {
   return { data, createdBy: 'app-owner', recordId: 'r1' }
 }
 
-const BUMPCHECK = ['projects', 'publicReports', 'verdicts', 'alerts', 'usage', 'attempts']
+const BUMPCHECK = ['projects', 'publicReports', 'verdicts', 'alerts', 'usage', 'attempts', 'outbox']
 
 describe('bumpcheck collections', () => {
   it('are all registered', () => {
@@ -127,10 +127,43 @@ describe('attempts', () => {
     for (const role of ROLES) expect(canRead(s, role, aliceAttempt, 'alice')).toBe(false)
   })
 
-  it('keeps who and which day fixed once written', () => {
-    for (const name of ['userId', 'day']) {
+  it('keeps who, which day and what kind fixed once written', () => {
+    for (const name of ['userId', 'day', 'kind']) {
       expect(s.columns.find((c) => c.name === name)).toMatchObject({ required: true, immutable: true })
     }
+  })
+
+  it('counts two kinds of request apart: adding a project and sending a test email', () => {
+    expect(s.columns.find((c) => c.name === 'kind')?.interpretation).toEqual({ kind: 'select', options: ['add-project', 'test-email'] })
+  })
+})
+
+describe('alerts: the send log', () => {
+  it('has what the settings page shows: time, kind, outcome and failure reason', () => {
+    const columns = schema('alerts').columns.map((c) => c.name)
+    expect(columns).toEqual(expect.arrayContaining(['sentAt', 'kind', 'outcome', 'failureReason', 'verdictKeys', 'projectId']))
+  })
+
+  it('holds no address: the recipient is never written to a row a client can read', () => {
+    const columns = schema('alerts').columns.map((c) => c.name)
+    expect(columns.filter((name) => /mail|address|recipient|^to$/i.test(name))).toEqual([])
+  })
+})
+
+describe('where an email address may be stored', () => {
+  it('nowhere a client reads except the platform\'s own users collection', () => {
+    for (const name of ['projects', 'publicReports', 'verdicts', 'alerts']) {
+      const columns = schema(name).columns.map((c) => c.name)
+      expect(columns.filter((column) => /mail|address|recipient|^to$/i.test(column)), name).toEqual([])
+    }
+  })
+})
+
+describe('outbox: what the fake mailer "sent" on the local test server', () => {
+  it('is server-only: no role reads it, so a message is seen only through the test-only action', () => {
+    const s = schema('outbox')
+    const message = row({ to: 'alice@example.test', subject: 'hello' })
+    for (const role of ROLES) expect(canRead(s, role, message, 'alice')).toBe(false)
   })
 })
 

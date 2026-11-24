@@ -1,0 +1,30 @@
+3 new breaking upgrades in dustinj15/bumpcheck-example
+======================================================
+
+bumpcheck read the changelogs for dustinj15/bumpcheck-example and found 3 upgrades that will break existing code. Each is listed here with what changed and the first thing to do.
+
+express  4.18.2 → 5.1.0  runtime dependency
+  Express 5 removes several long-deprecated request and response helpers and changes how route paths are matched.
+  What to do first: Replace `app.del()` with `app.delete()`, and `req.param(name)` with `req.params`, `req.body` or `req.query`.
+  3 more changes are listed in the report.
+  Changelog: https://github.com/expressjs/express/blob/HEAD/History.md
+
+zod  3.22.4 → 4.1.5  runtime dependency
+  Zod 4 changes error customisation: the `message`, `invalid_type_error` and `required_error` options are replaced by a single `error` option.
+  What to do first: Replace `{ message: "..." }` with `{ error: "..." }` in schema definitions.
+  1 more change is listed in the report.
+  Changelog: https://github.com/colinhacks/zod/releases
+
+@types/node  18.19.0 → 24.0.3  dev dependency
+  The types now describe Node 24: APIs removed since Node 18 are gone from the typings.
+  What to do first: Run the type checker and replace any API it no longer finds, such as `url.parse()` with `new URL()`.
+
+Open the full report: https://bumpcheck.app.space/projects/sample-project-id
+
+-- 
+You are getting this email because email alerts are on for dustinj15/bumpcheck-example in bumpcheck. It was sent to the address you sign in with. bumpcheck does not email you about the same verdict twice.
+
+Stop these emails for this project, no sign-in needed: https://bumpcheck.app.space/api/unsubscribe?token=c2FtcGxlLXByb2plY3QtaWQ.jJaBnvIK_4jgDu48WabNm3hDkpymh-TAGF_RYeDopC8
+Alert settings: https://bumpcheck.app.space/projects/sample-project-id/settings
+
+bumpcheck

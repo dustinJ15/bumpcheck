@@ -14,12 +14,12 @@
  */
 
 import type { ActionResult, ActionTools } from 'deepspace/worker'
-import type { ProjectScanFields, Verdict } from '../core/model'
-import type { Clock, ProjectRecord, RecordStore } from './types'
+import type { AlertLogEntry, ProjectScanFields, Verdict } from '../core/model'
+import type { AlertStore, Clock, ProjectRecord, RecordStore } from './types'
 
 type RecordTools = Pick<ActionTools, 'get' | 'query' | 'create' | 'update'>
 
-export class RecordRoomStore implements RecordStore {
+export class RecordRoomStore implements RecordStore, AlertStore {
   constructor(private readonly tools: RecordTools) {}
 
   async getProject(projectId: string): Promise<ProjectRecord | null> {
@@ -109,6 +109,47 @@ export class RecordRoomStore implements RecordStore {
     return next
   }
 
+  // ------------------------------------------------- alerts (AlertStore)
+
+  /**
+   * The address a user signs in with. The record room keeps one `users` row
+   * per user, with the user's id as its id, and fills `email` from the
+   * verified sign-in token each time that user connects. A client cannot
+   * change it (the platform refuses writes to that column), so this is the
+   * platform's verified identity, read on the server.
+   */
+  async getUserEmail(userId: string): Promise<string | null> {
+    const result = await this.tools.get('users', userId)
+    if (!result.success) {
+      if (result.error.startsWith('Record not found')) return null
+      throw new Error(`could not read user ${userId}: ${result.error}`)
+    }
+    return text(result.data.record.data.email)
+  }
+
+  /** Every line of a project's send log. No `limit`: server-side queries without one return every row. */
+  async listAlerts(projectId: string): Promise<AlertLogEntry[]> {
+    const result = unwrap(await this.tools.query('alerts', { where: { projectId } }), `list alerts of ${projectId}`)
+    return result.records.map(({ data }) => ({
+      projectId,
+      userId: String(data.userId),
+      sentAt: String(data.sentAt),
+      kind: data.kind === 'test' ? 'test' : 'alert',
+      // Anything that does not plainly say "sent" is read as not sent.
+      outcome: data.outcome === 'sent' ? 'sent' : 'failed',
+      verdictKeys: json(data.verdictKeys, []),
+      failureReason: text(data.failureReason),
+    }))
+  }
+
+  async addAlert(entry: AlertLogEntry): Promise<void> {
+    unwrap(await this.tools.create('alerts', { ...entry }), `log an alert for ${entry.projectId}`)
+  }
+
+  async setAlertedKeys(projectId: string, alertedKeys: string[]): Promise<void> {
+    unwrap(await this.tools.update('projects', projectId, { alertedKeys }), `record alerted verdicts of ${projectId}`)
+  }
+
   private async findOne(
     collection: string,
     where: Record<string, unknown>,
@@ -135,6 +176,9 @@ function toProjectRecord(projectId: string, data: Record<string, unknown>): Proj
     scanHeartbeatAt: text(data.scanHeartbeatAt),
     lastOpenedAt: text(data.lastOpenedAt),
     checkRequests: json(data.checkRequests, []),
+    reviewedKeys: json(data.reviewedKeys, []),
+    alertsEnabled: data.alertsEnabled === true || data.alertsEnabled === 1,
+    alertedKeys: json(data.alertedKeys, []),
   }
 }
 

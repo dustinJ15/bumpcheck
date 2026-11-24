@@ -14,7 +14,7 @@
  *                  path to the judge (first scan, daily scan, scan now,
  *                  check one, retry) passes the same two checks.
  *   write          write the results to the project row
- *   alert          hand off to the alert hook (a no-op until ticket 06)
+ *   alert          hand off to the alert hook: the alert step in ./alert.ts
  *   done
  *
  * An on-demand scan ("check this one", or a retry of a failed verdict) is the
@@ -62,9 +62,10 @@ import { verdictCovers } from '../core/verdict-cover'
 import type { Clock, Judge, JudgeResult, PackageRegistry, RecordStore, SourceHost } from '../services/types'
 import { readRepoManifest } from './manifest'
 
-/** Called after a successful scan's results are written. Ticket 06 supplies the real one. */
+/** Called after a successful full scan's results are written. The real one is `alertHookFor` in ./alert.ts. */
 export type AlertHook = (input: { projectId: string }) => Promise<void>
 
+/** An alert hook that does nothing, for tests that are not about alerts. */
 export const noAlerts: AlertHook = async () => {}
 
 export interface ScanServices {

@@ -8,8 +8,13 @@
  */
 
 import { expect } from 'deepspace/testing'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
+
+const APP_ID = /DEEPSPACE_APP_ID\s*=\s*"([^"]+)"/.exec(readFileSync('wrangler.toml', 'utf8'))?.[1]
+/** The app's record room, as the pages name it when they connect. */
+export const RECORD_ROOM = `app:${APP_ID}`
 
 export interface ActionAnswer {
   success: boolean
@@ -74,4 +79,44 @@ export function capturePath(name: string): string {
 
 export async function capture(page: Page, name: string) {
   await page.screenshot({ path: capturePath(name), fullPage: true })
+}
+
+export interface WireRecord {
+  recordId: string
+  createdBy: string
+  data: Record<string, unknown>
+}
+
+/**
+ * Asks the record room directly, as this page's user (or as a signed-out
+ * visitor when `token` is null), for every row of a collection it will
+ * give. This is the server's answer, with no page code in between.
+ */
+export async function askRecordRoom(page: Page, token: string | null, collection: string): Promise<{ records: WireRecord[]; raw: string }> {
+  const received = await page.evaluate(
+    async ({ room, token, collection }) => {
+      const url = new URL(`/ws/${encodeURIComponent(room)}`, window.location.origin)
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+      if (token) url.searchParams.set('token', token)
+      const received: string[] = []
+      const socket = new WebSocket(url)
+      socket.onmessage = (event) => received.push(String(event.data))
+      await new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve()
+        socket.onerror = () => reject(new Error('record room socket failed to open'))
+      })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      socket.send(JSON.stringify({ type: 'core.subscribe', payload: { subscriptionId: 'test-probe', query: { collection } } }))
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      socket.close()
+      return received
+    },
+    { room: RECORD_ROOM, token, collection },
+  )
+  const answers = received
+    .map((text) => JSON.parse(text) as { type: string; payload?: { subscriptionId?: string; records?: WireRecord[] } })
+    .filter((message) => message.type === 'core.query_result' && message.payload?.subscriptionId === 'test-probe')
+  // The room must have answered, or "it sent no rows" would mean nothing.
+  expect(answers, `the record room answered the ${collection} query`).toHaveLength(1)
+  return { records: answers[0].payload?.records ?? [], raw: received.join('\n') }
 }

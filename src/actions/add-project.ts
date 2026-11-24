@@ -110,17 +110,20 @@ export const addProject: ActionHandler<Env> = async ({ userId, params, tools, en
  * the rows cannot be read or written: an attempt that cannot be counted is
  * not allowed through.
  */
+/** The kind of `attempts` row this action counts (src/schemas/attempts-schema.ts). */
+const ADD_ATTEMPT = 'add-project'
+
 function attemptsOf(tools: ActionTools, userId: string, day: string): AddAttempts {
   async function countToday(): Promise<number> {
     // Two past the cap is enough to know the answer, however many rows there are.
-    const rows = await tools.query('attempts', { where: { userId, day }, limit: LIMITS.addAttemptsPerUserPerDay + 2 })
+    const rows = await tools.query('attempts', { where: { userId, day, kind: ADD_ATTEMPT }, limit: LIMITS.addAttemptsPerUserPerDay + 2 })
     if (!rows.success) throw new Error(`could not count add attempts: ${rows.error}`)
     return rows.data.records.length
   }
   return {
     countToday,
     async record() {
-      const created = await tools.create('attempts', { userId, day })
+      const created = await tools.create('attempts', { userId, day, kind: ADD_ATTEMPT })
       if (!created.success) throw new Error(`could not record an add attempt: ${created.error}`)
       return countToday()
     },

@@ -5,13 +5,22 @@
  * proven by mode.test.ts).
  *
  * `test-reset-my-projects`: delete the caller's own projects, their public
- * reports, and the caller's add-project attempts (the browser tests add far
- * more than a day's allowance of projects). It also removes the example
- * fixture (below).
+ * reports, the caller's send log, the caller's counted attempts (add-project
+ * attempts and test emails: the browser tests use far more than a day's
+ * allowance), and the fake mail addressed to the caller. It also removes
+ * the example fixture (below).
  *
- * The local record room keeps its data between test runs, and there is no
- * "delete project" action until ticket 06, so the browser tests call this
- * first to start from an empty list.
+ * The local record room keeps its data between test runs, so the browser
+ * tests call this first to start from an empty list. The real "delete
+ * project" action is not used for this: it deliberately keeps the day's
+ * attempt counts.
+ *
+ * `test-read-outbox` (ticket 06): the messages the fake mailer "sent" to
+ * the caller, oldest first. On the local test server no email leaves the
+ * machine; each one is written to the server-only `outbox` collection
+ * (src/services/outbox-mailer.ts). This is how a browser test reads an
+ * email and follows its unsubscribe link. It returns only mail addressed to
+ * the caller's own sign-in address.
  *
  * It answers "Action not found" unless the fake-services setting is on, and
  * that setting exists only on the local test server: a production build
@@ -59,9 +68,12 @@ import { EXAMPLE_PROJECT_ID, LIMITS, SCHEDULE } from '../config'
 import { utcDay } from '../core/limits'
 import { publicReportOf } from '../core/public-report'
 import { ownerActionTools } from '../server/action-routes'
-import { removeReport, writeReport } from '../server/public-report'
+import { PUBLIC_REPORTS, removeReport, writeReport } from '../server/public-report'
 import { FAKE_PACKAGE_NAMES } from '../services/fake-world'
 import { servicesMode } from '../services/mode'
+import { OUTBOX } from '../services/outbox-mailer'
+import { RecordRoomStore } from '../services/record-room-store'
+import { readJson } from '../lib/json'
 import { loadOwnProject } from './own-project'
 
 export const testResetMyProjects: ActionHandler<Env> = async ({ userId, tools, env }) => {
@@ -75,6 +87,18 @@ export const testResetMyProjects: ActionHandler<Env> = async ({ userId, tools, e
     if (!removed.ok) return { success: false, error: removed.error }
   }
 
+  // And any public report whose project no longer exists, whoever's it was.
+  // The app never leaves one (delete removes the report first), but a test
+  // run against deliberately broken code can, and it would then be found by
+  // every later run.
+  const reports = await tools.query(PUBLIC_REPORTS)
+  if (!reports.success) return { success: false, error: reports.error }
+  for (const report of reports.data.records) {
+    if (report.recordId === EXAMPLE_PROJECT_ID) continue
+    const project = await tools.get('projects', report.recordId)
+    if (!project.success && project.error.startsWith('Record not found')) await removeReport(tools, report.recordId)
+  }
+
   let deleted = 0
   for (;;) {
     const batch = await tools.deleteWhere('projects', { userId })
@@ -82,9 +106,44 @@ export const testResetMyProjects: ActionHandler<Env> = async ({ userId, tools, e
     deleted += batch.data.deleted
     if (batch.data.deleted === 0) break
   }
-  const attempts = await tools.deleteWhere('attempts', { userId })
-  if (!attempts.success) return { success: false, error: attempts.error }
+  // The caller's send log, counted attempts, and fake mail. Each in batches until none are left.
+  const address = await new RecordRoomStore(tools).getUserEmail(userId).catch(() => null)
+  const leftovers: Array<[string, Record<string, unknown>]> = [
+    ['alerts', { userId }],
+    ['attempts', { userId }],
+    ...(address === null ? [] : ([[OUTBOX, { to: address }]] as Array<[string, Record<string, unknown>]>)),
+  ]
+  for (const [collection, where] of leftovers) {
+    for (;;) {
+      const batch = await tools.deleteWhere(collection, where)
+      if (!batch.success) return { success: false, error: batch.error }
+      if (batch.data.deleted === 0) break
+    }
+  }
   return { success: true, data: { deleted } }
+}
+
+export const testReadOutbox: ActionHandler<Env> = async ({ userId, tools, env }) => {
+  if (servicesMode(env) !== 'fake') return { success: false, error: 'Action not found' }
+
+  const address = await new RecordRoomStore(tools).getUserEmail(userId).catch(() => null)
+  if (address === null) return { success: true, data: { messages: [] } }
+  const found = await tools.query<Record<string, unknown>>(OUTBOX, { where: { to: address } })
+  if (!found.success) return { success: false, error: found.error }
+
+  const messages = found.data.records
+    .map((record) => record.data)
+    .sort((a, b) => String(a.sentAt).localeCompare(String(b.sentAt)))
+    .map((data) => ({
+      to: data.to,
+      subject: data.subject,
+      html: data.html,
+      text: data.text,
+      headers: readJson<Record<string, string>>(data.headers) ?? {},
+      replyTo: data.replyTo ?? null,
+      sentAt: data.sentAt,
+    }))
+  return { success: true, data: { messages } }
 }
 
 export const testPublishExample: ActionHandler<Env> = async ({ userId, params, tools, env }) => {

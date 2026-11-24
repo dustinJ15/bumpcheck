@@ -37,6 +37,10 @@
  *   bumpcheck-fake/many         more majors than one scan may read, so a scan stops at its limit
  *   bumpcheck-fake/outage       a major whose changelog cannot be fetched, so the scan fails
  *   bumpcheck-fake/ratelimited  a major whose release notes GitHub refuses, so it is not read
+ *
+ * `bumpcheck-fake/mail-down` is an ordinary small repo. Its name is the one
+ * the fake mailer refuses to "send" for (./outbox-mailer.ts), so a test can
+ * see a failed send in a project's send log (ticket 06).
  */
 
 import {
@@ -160,6 +164,7 @@ const SOURCE_HOST_DATA: FakeSourceHostData = {
     [`${FAKE_OWNER}/many`]: repoBehindOn('many', MANY_NAMES),
     [`${FAKE_OWNER}/outage`]: repoBehindOn('outage', ['outage']),
     [`${FAKE_OWNER}/ratelimited`]: repoBehindOn('ratelimited', ['limited']),
+    [`${FAKE_OWNER}/mail-down`]: repo(SMALL_PACKAGE_JSON),
     // Repos the add-project check refuses.
     [`${FAKE_OWNER}/no-manifest`]: repo(null),
     [`${FAKE_OWNER}/bad-json`]: repo('{ this is not json'),

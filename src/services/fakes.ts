@@ -7,9 +7,10 @@
  * setting is on (see ./mode.ts).
  */
 
-import type { ProjectScanFields, RepoRef, SourceRepo, Verdict } from '../core/model'
+import type { AlertLogEntry, ProjectScanFields, RepoRef, SourceRepo, Verdict } from '../core/model'
 import { validateVerdictResponse, type VerdictPromptInput } from '../core/verdict'
 import type {
+  AlertStore,
   ChangelogFile,
   Clock,
   Judge,
@@ -151,15 +152,22 @@ export class FakeJudge implements Judge {
 
 // ------------------------------------------------------------------ mailer
 
+/**
+ * Decides what the fake mail service "answers" for a message. `attempt`
+ * counts every message handed to the mailer, starting at 1. May throw.
+ */
+export type FakeMailResponder = (message: MailMessage, attempt: number) => MailResult
+
 export class FakeMailer implements Mailer {
-  /** Every message handed to the mailer, sent or not. */
+  /** Every message handed to the mailer, sent or not. An empty list means no email went out. */
   readonly calls: MailMessage[] = []
 
-  constructor(private readonly result: MailResult = { ok: true }) {}
+  /** Pass a result to give the same answer every time, or a function to decide per message. */
+  constructor(private readonly respond: MailResult | FakeMailResponder = { ok: true }) {}
 
   async send(message: MailMessage): Promise<MailResult> {
-    this.calls.push(message)
-    return this.result
+    this.calls.push(structuredClone(message))
+    return typeof this.respond === 'function' ? this.respond(message, this.calls.length) : this.respond
   }
 }
 
@@ -167,15 +175,22 @@ export class FakeMailer implements Mailer {
 
 export type RecordStoreCall =
   | { method: 'getProject' | 'listProjects' | 'getVerdict' | 'getAiCalls' | 'addAiCall'; arg: string }
+  | { method: 'getUserEmail' | 'listAlerts' | 'addAlert' | 'setAlertedKeys'; arg: string }
   | { method: 'updateProject'; arg: string; changes: Partial<ProjectScanFields> }
   | { method: 'putVerdict'; arg: string }
 
 /** An in-memory record store. Values are copied in and out, like a real database. */
-export class MemoryRecordStore implements RecordStore {
+export class MemoryRecordStore implements RecordStore, AlertStore {
   readonly calls: RecordStoreCall[] = []
   readonly projects = new Map<string, ProjectRecord>()
   readonly verdicts = new Map<string, Verdict>()
   readonly aiCalls = new Map<string, number>()
+  /** User id -> the address that user signs in with. */
+  readonly userEmails = new Map<string, string>()
+  /** The send log of every project, oldest first. */
+  readonly alerts: AlertLogEntry[] = []
+  /** Alert-store methods that should throw, so a test can see what a failed read or write leads to. */
+  readonly failing = new Set<'listAlerts' | 'addAlert' | 'setAlertedKeys'>()
 
   /** Adds a project with sensible empty scan fields; `fields` overrides any of them. */
   seedProject(fields: Pick<ProjectRecord, 'id' | 'userId' | 'repoOwner' | 'repoName'> & Partial<ProjectRecord>): void {
@@ -191,6 +206,9 @@ export class MemoryRecordStore implements RecordStore {
       scanHeartbeatAt: null,
       lastOpenedAt: null,
       checkRequests: [],
+      reviewedKeys: [],
+      alertsEnabled: false,
+      alertedKeys: [],
       ...fields,
     }))
   }
@@ -234,6 +252,31 @@ export class MemoryRecordStore implements RecordStore {
     const next = (this.aiCalls.get(day) ?? 0) + 1
     this.aiCalls.set(day, next)
     return next
+  }
+
+  async getUserEmail(userId: string): Promise<string | null> {
+    this.calls.push({ method: 'getUserEmail', arg: userId })
+    return this.userEmails.get(userId) ?? null
+  }
+
+  async listAlerts(projectId: string): Promise<AlertLogEntry[]> {
+    this.calls.push({ method: 'listAlerts', arg: projectId })
+    if (this.failing.has('listAlerts')) throw new Error('could not read the send log (fake)')
+    return this.alerts.filter((entry) => entry.projectId === projectId).map(copy)
+  }
+
+  async addAlert(entry: AlertLogEntry): Promise<void> {
+    this.calls.push({ method: 'addAlert', arg: entry.projectId })
+    if (this.failing.has('addAlert')) throw new Error('could not write the send log (fake)')
+    this.alerts.push(copy(entry))
+  }
+
+  async setAlertedKeys(projectId: string, alertedKeys: string[]): Promise<void> {
+    this.calls.push({ method: 'setAlertedKeys', arg: projectId })
+    if (this.failing.has('setAlertedKeys')) throw new Error('could not update the project (fake)')
+    const project = this.projects.get(projectId)
+    if (!project) throw new Error(`no project ${projectId}`)
+    this.projects.set(projectId, { ...project, alertedKeys: copy(alertedKeys) })
   }
 }
 

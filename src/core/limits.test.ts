@@ -7,12 +7,17 @@ import {
   isProjectIdle,
   isScanStalled,
   mayAddProject,
+  mayAlertToday,
   mayAttemptAddProject,
   mayJudgeAnother,
+  maySendTestEmail,
+  mayTryAlertAgain,
   nextDueTime,
   nextUtcDayStart,
   scanNowCooldown,
+  testEmailsLeft,
   utcDay,
+  waitUntilNextUtcDay,
 } from './limits'
 
 const now = Date.parse('2026-11-23T12:00:00.000Z')
@@ -147,5 +152,52 @@ describe('isoToTime', () => {
     expect(isoToTime(undefined)).toBeNull()
     expect(isoToTime('')).toBeNull()
     expect(isoToTime('yesterday-ish')).toBeNull()
+  })
+})
+
+describe('maySendTestEmail: test emails per user per day', () => {
+  it('allows the 3rd of the day and refuses the 4th', () => {
+    expect(maySendTestEmail({ testEmailsToday: LIMITS.testEmailsPerUserPerDay - 1, isAppOwner: false })).toBe(true)
+    expect(maySendTestEmail({ testEmailsToday: LIMITS.testEmailsPerUserPerDay, isAppOwner: false })).toBe(false)
+    expect(LIMITS.testEmailsPerUserPerDay).toBe(3)
+  })
+
+  it('exempts the app owner (a per-user limit)', () => {
+    expect(maySendTestEmail({ testEmailsToday: LIMITS.testEmailsPerUserPerDay + 50, isAppOwner: true })).toBe(true)
+  })
+
+  it('says how many are left: 3, 2, 1, 0, never below, and no number for the app owner', () => {
+    expect([0, 1, 2, 3, 9].map((testEmailsToday) => testEmailsLeft({ testEmailsToday, isAppOwner: false }))).toEqual([3, 2, 1, 0, 0])
+    expect(testEmailsLeft({ testEmailsToday: 9, isAppOwner: true })).toBeNull()
+  })
+})
+
+describe('mayAlertToday: alert emails per project per day', () => {
+  it('allows the first alert of the day and refuses a second', () => {
+    expect(mayAlertToday({ alertsSentToday: LIMITS.alertEmailsPerProjectPerDay - 1 })).toBe(true)
+    expect(mayAlertToday({ alertsSentToday: LIMITS.alertEmailsPerProjectPerDay })).toBe(false)
+    expect(LIMITS.alertEmailsPerProjectPerDay).toBe(1)
+  })
+})
+
+describe('mayTryAlertAgain: a failed alert is retried once', () => {
+  it('allows the first send and one retry, then no more', () => {
+    expect(mayTryAlertAgain({ failedSends: 0 })).toBe(true)
+    expect(mayTryAlertAgain({ failedSends: LIMITS.alertSendAttemptsPerVerdict - 1 })).toBe(true)
+    expect(mayTryAlertAgain({ failedSends: LIMITS.alertSendAttemptsPerVerdict })).toBe(false)
+    expect(LIMITS.alertSendAttemptsPerVerdict).toBe(2)
+  })
+})
+
+describe('waitUntilNextUtcDay: how long until the daily counters reset, in words', () => {
+  it('counts in hours, rounded up, when it is an hour or more', () => {
+    expect(waitUntilNextUtcDay(Date.parse('2026-11-23T12:00:00.000Z'))).toBe('12 hours')
+    expect(waitUntilNextUtcDay(Date.parse('2026-11-23T22:30:00.000Z'))).toBe('2 hours')
+    expect(waitUntilNextUtcDay(Date.parse('2026-11-23T23:00:00.000Z'))).toBe('1 hour')
+  })
+
+  it('counts in minutes inside the last hour', () => {
+    expect(waitUntilNextUtcDay(Date.parse('2026-11-23T23:30:00.000Z'))).toBe('30 minutes')
+    expect(waitUntilNextUtcDay(Date.parse('2026-11-23T23:59:00.000Z'))).toBe('1 minute')
   })
 })

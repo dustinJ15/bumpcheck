@@ -30,6 +30,7 @@ import {
   registerAuthAndIntegrationRoutes,
   registerPlatformProxyRoutes,
   registerStaticRoutes,
+  registerUnsubscribeRoute,
   resolveAuth,
 } from './src/server/http-routes.js'
 import { registerRealtimeRoutes } from './src/server/realtime-routes.js'
@@ -138,6 +139,20 @@ export interface Env extends DOBindings<typeof __DO_MANIFEST__> {
    * only on the local test server; a production build never has it.
    */
   BUMPCHECK_FAKE_SERVICES?: string
+  /**
+   * bumpcheck: the local dev/test server's own address, for links in emails
+   * sent from it (src/core/app-origin.ts). A production build never has it.
+   */
+  BUMPCHECK_APP_ORIGIN?: string
+  /**
+   * bumpcheck: the key that signs unsubscribe links, from the app's secret
+   * store. Read in two places only, and passed on as an argument:
+   * src/services/wire.ts (to sign the link in an email) and
+   * src/server/http-routes.ts (to check a link that came back). Optional in
+   * the type because a worker can be missing it; both places then refuse to
+   * act. Never logged, never sent to a browser.
+   */
+  UNSUBSCRIBE_SIGNING_KEY?: string
 }
 
 export type AppContext = { Bindings: Env }
@@ -157,6 +172,8 @@ app.use('*', async (c, next) => {
 registerAuthAndIntegrationRoutes(app)
 registerRealtimeRoutes(app)
 registerActionRoutes(app, resolveAuth)
+// bumpcheck: the public unsubscribe link (GET shows a page, POST turns alerts off).
+registerUnsubscribeRoute(app)
 // Every scaffold exposes selected tools through HTTP, MCP and browser tools.
 // Only copilot owns the collections needed for the in-app chat UI.
 registerAgent(app, {

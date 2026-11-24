@@ -33,6 +33,19 @@ export interface ProjectRow {
   dependencies: DependencyResult[] | string | null
   reviewedKeys: string[] | string | null
   checkRequests: string[] | string | null
+  /** The owner's alert setting. A boolean column: it may arrive as true/false or 1/0. */
+  alertsEnabled: boolean | number | null
+}
+
+/** One line of a project's send log (src/schemas/alerts-schema.ts). Only its owner can read it. */
+export interface AlertRow {
+  userId: string
+  projectId: string
+  sentAt: string
+  kind: 'alert' | 'test'
+  outcome: 'sent' | 'failed'
+  failureReason: string | null
+  verdictKeys: string[] | string | null
 }
 
 /**

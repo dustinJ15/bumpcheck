@@ -152,3 +152,22 @@ export interface ProjectScanFields {
    */
   checkRequests: string[]
 }
+
+/**
+ * One line of a project's send log: an alert or a test email that was sent,
+ * or that could not be. Stored in the `alerts` collection.
+ */
+export interface AlertLogEntry {
+  projectId: string
+  /** The project's owner: the row's owner field, so only they can read it. */
+  userId: string
+  /** ISO time of the attempt. */
+  sentAt: string
+  /** "alert" after a scan; "test" from the settings page's button. */
+  kind: 'alert' | 'test'
+  outcome: 'sent' | 'failed'
+  /** The verdicts the email covered. */
+  verdictKeys: string[]
+  /** Why it could not be sent. Null when it was. */
+  failureReason: string | null
+}

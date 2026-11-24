@@ -29,8 +29,11 @@ import {
   nativeAuthToken,
 } from 'deepspace/worker'
 import type { ExpoAuthBridgeOptions, JwtVerifierConfig, VerifyResult } from 'deepspace/worker'
+import { UNSUBSCRIBE_PATH } from '../core/unsubscribe-token.js'
 import { browserCallableIntegrations, integrations } from '../integrations.js'
 import type { AppContext, Env } from '../../worker.js'
+import { ownerActionTools } from './action-routes.js'
+import { handleUnsubscribe } from './unsubscribe.js'
 
 function jwtConfig(env: Env): JwtVerifierConfig {
   return { publicKey: env.AUTH_JWT_PUBLIC_KEY, issuer: env.AUTH_JWT_ISSUER }
@@ -285,6 +288,46 @@ export function registerAuthAndIntegrationRoutes(app: Hono<AppContext>): void {
     } catch {
       return c.json({ error: 'Integration proxy failed' }, 502)
     }
+  })
+}
+
+/**
+ * bumpcheck: the unsubscribe link in every alert email. The one public
+ * route outside the action layer: no sign-in, because the reader is in a
+ * mail client (story 43). What it may do is decided in ./unsubscribe.ts:
+ * GET shows a page and changes nothing; POST turns alerts off for the one
+ * project the signed token names.
+ *
+ * The signing key goes from the worker's env straight into that function.
+ * It is not logged, and no page contains it. Without it every link is
+ * refused.
+ */
+export function registerUnsubscribeRoute(app: Hono<AppContext>): void {
+  app.on(['GET', 'POST'], UNSUBSCRIBE_PATH, async (c) => {
+    const signingKey = c.env.UNSUBSCRIBE_SIGNING_KEY
+    if (!signingKey) console.error('[unsubscribe] the signing key is not set: every link is refused')
+
+    const answer = await handleUnsubscribe({
+      method: c.req.method === 'POST' ? 'POST' : 'GET',
+      token: c.req.query('token'),
+      signingKey,
+      // The visitor has no identity, so the project is read and written as the app owner.
+      tools: ownerActionTools(c.env),
+    })
+    return new Response(answer.html, {
+      status: answer.status,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        // The address holds the token: keep the page out of caches and
+        // search results, and do not pass the address on to the next page.
+        'Cache-Control': 'no-store',
+        'Referrer-Policy': 'no-referrer',
+        'X-Robots-Tag': 'noindex',
+        'X-Content-Type-Options': 'nosniff',
+        // The page is one form and some inline styles. Nothing else may load or run.
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      },
+    })
   })
 }
 
