@@ -99,6 +99,14 @@ export const JUDGE = {
    * code names and JSON punctuation can be fewer, so 3 is on the safe side.
    */
   worstCaseCharsPerToken: 3,
+  /**
+   * The share of each VERDICT_SHAPE character limit the prompt asks for.
+   * The model is told 60% of what the validator allows (a 300-character
+   * note is asked for as 180), so an answer that runs a little long still
+   * passes instead of costing a paid retry. The number of changes is not
+   * scaled: the prompt and the validator ask for the same count.
+   */
+  promptShare: 0.6,
   /** Changelog text longer than this is cut, and the verdict says so. */
   changelogInputCapChars: 30_000,
   /**
@@ -111,7 +119,8 @@ export const JUDGE = {
 
 /**
  * Size limits on a verdict the judge returns. The prompt states each one to
- * the model, and a response over any of them is rejected (and retried), so
+ * the model (each character limit scaled down by JUDGE.promptShare, for
+ * headroom), and a response over any of them is rejected (and retried), so
  * one runaway answer cannot bloat the shared cache that every project reads
  * or run past the output cap above.
  */

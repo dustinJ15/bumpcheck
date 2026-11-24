@@ -115,14 +115,36 @@ the changes bound from the prompt (2 failed), and the two validator mutations ab
 **Left undone / unverified**
 
 - The live check was written, type-checked and linted only; never run (rule 7). Whether Haiku
-  keeps to the character limits in practice is unproven: an answer over a limit is rejected as
-  "does not match the verdict schema" and retried with the same limits.
+  keeps near the character limits it is asked for is unproven; the headroom below makes a
+  little over harmless, but an answer past the validator's limit is still rejected.
 - `ClaudeJudge` itself has no test (it would need a real or mocked AI call); only the pure
   mapping it calls is tested. Replacing its `readJudgeAnswer` call with `validateVerdictResponse`
   would leave the gate green.
 - No screenshot (ticket: changes no page).
 
-**Gate** (`npm run gate`, final tree)
+**Follow-up from the supervisor: headroom between prompt and validator**
+
+- `JUDGE.promptShare: 0.6` in `src/config.ts`. The prompt states each character limit as
+  `Math.floor(VERDICT_SHAPE.x * JUDGE.promptShare)`: summary 240, title 60, notes 180 each, API
+  names 36 characters. The validator, the output cap and the cap test are unchanged, still sized
+  for the validator's maxima (400 / 100 / 300 / 60). The number of changes (8, then 3) and the
+  number of API names per change (5) are not scaled: prompt and validator agree on counts.
+- The prompt no longer says "an answer over these limits is rejected", since what it states is
+  now below the rejection line.
+
+Red/green for the follow-up:
+
+- `the prompt states every bound from config, the character limits reduced by JUDGE.promptShare`
+  (replaces `the prompt states every bound from config`): `TypeError: actual value must be number or bigint, received "undefined"` (no `JUDGE.promptShare`).
+  Also seen red by mutation after the change: making the prompt state the validator's own limits
+  failed this test.
+- `an answer longer than the prompt asked, but within the validator's limits, is accepted`:
+  `AssertionError: expected false to be true` (before `promptShare` existed the helper made empty
+  strings, which the validator rejects; so this red was from the missing setting, not from the
+  validator). After the change it passes because the validator keeps its larger limits; it pins
+  that the validator stays above what the prompt asks.
+
+**Gate** (`npm run gate`, final tree, after the follow-up)
 
 ```
 
@@ -146,9 +168,9 @@ the changes bound from the prompt (2 failed), and the two validator mutations ab
 
 
  Test Files  33 passed (33)
-      Tests  651 passed (651)
-   Start at  05:34:48
-   Duration  2.35s (transform 3.09s, setup 0ms, import 10.95s, tests 1.31s, environment 6ms)
+      Tests  652 passed (652)
+   Start at  05:44:26
+   Duration  2.44s (transform 3.40s, setup 0ms, import 11.39s, tests 1.36s, environment 6ms)
 
 
 > bumpcheck@0.0.1 test:smoke
@@ -159,11 +181,11 @@ BEWARE: your OS is not officially supported by Playwright; downloading fallback 
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:34:57 AM [generouted] scanned 9 routes in 11 ms
+[WebServer] 5:44:36 AM [generouted] scanned 9 routes in 10 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 5037 ms
+[WebServer]   VITE v8.3.8  ready in 5064 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -186,16 +208,15 @@ BEWARE: your OS is not officially supported by Playwright; downloading fallback 
 
 Running 6 tests using 1 worker
 
-  ✓  1 tests/smoke.spec.ts:21:3 › Smoke tests › static landing loads without JS errors (782ms)
-  ✓  2 tests/smoke.spec.ts:29:3 › Smoke tests › landing carries one title, one description, one canonical (401ms)
+  ✓  1 tests/smoke.spec.ts:21:3 › Smoke tests › static landing loads without JS errors (763ms)
+  ✓  2 tests/smoke.spec.ts:29:3 › Smoke tests › landing carries one title, one description, one canonical (403ms)
   ✓  3 tests/smoke.spec.ts:40:3 › Smoke tests › static contract: landing fires no auth request, opens no websocket (1.9s)
-  ✓  4 tests/smoke.spec.ts:55:3 › Smoke tests › dynamic app boundary mounts on /home (615ms)
+  ✓  4 tests/smoke.spec.ts:55:3 › Smoke tests › dynamic app boundary mounts on /home (551ms)
+  ✓  5 tests/smoke.spec.ts:60:3 › Smoke tests › sign-in button visible when logged out (479ms)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  5 tests/smoke.spec.ts:60:3 › Smoke tests › sign-in button visible when logged out (565ms)
-[WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  6 tests/smoke.spec.ts:66:3 › Smoke tests › unknown route shows 404 (398ms)
+  ✓  6 tests/smoke.spec.ts:66:3 › Smoke tests › unknown route shows 404 (397ms)
 
-  6 passed (13.4s)
+  6 passed (13.3s)
 
 > bumpcheck@0.0.1 test:api
 > deepspace test run api
@@ -205,11 +226,11 @@ BEWARE: your OS is not officially supported by Playwright; downloading fallback 
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:35:14 AM [generouted] scanned 9 routes in 10 ms
+[WebServer] 5:44:53 AM [generouted] scanned 9 routes in 10 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 4887 ms
+[WebServer]   VITE v8.3.8  ready in 5077 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -232,10 +253,10 @@ BEWARE: your OS is not officially supported by Playwright; downloading fallback 
 
 Running 2 tests using 1 worker
 
-  ✓  1 tests/api.spec.ts:4:3 › API tests › auth proxy forwards to auth worker (353ms)
-  ✓  2 tests/api.spec.ts:9:3 › API tests › WebSocket endpoint exists (870ms)
+  ✓  1 tests/api.spec.ts:4:3 › API tests › auth proxy forwards to auth worker (102ms)
+  ✓  2 tests/api.spec.ts:9:3 › API tests › WebSocket endpoint exists (886ms)
 
-  2 passed (8.7s)
+  2 passed (9.5s)
 
 > bumpcheck@0.0.1 test:signed-in
 > deepspace test run tests/projects.spec.ts && deepspace test run tests/project-page.spec.ts && deepspace test run tests/sharing.spec.ts && deepspace test run tests/alerts.spec.ts && deepspace test run tests/scheduling.spec.ts
@@ -245,11 +266,11 @@ BEWARE: your OS is not officially supported by Playwright; downloading fallback 
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:35:26 AM [generouted] scanned 9 routes in 10 ms
+[WebServer] 5:45:06 AM [generouted] scanned 9 routes in 10 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 4905 ms
+[WebServer]   VITE v8.3.8  ready in 4882 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -277,7 +298,7 @@ Running 10 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   1 tests/projects.spec.ts:73:1 › the projects list starts empty, a project is added, and its first scan finishes while watching (4.5s)
+  ✓   1 tests/projects.spec.ts:73:1 › the projects list starts empty, a project is added, and its first scan finishes while watching (4.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -285,26 +306,24 @@ Running 10 tests using 1 worker
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   2 tests/projects.spec.ts:105:1 › adding the same repo twice is refused with its own message (2.1s)
+  ✓   2 tests/projects.spec.ts:105:1 › adding the same repo twice is refused with its own message (2.4s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
-[WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [alert] not sent: alerts-off
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   3 tests/projects.spec.ts:119:1 › the project limit is reported, and nothing is added past it (3.1s)
+  ✓   3 tests/projects.spec.ts:119:1 › the project limit is reported, and nothing is added past it (2.8s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [alert] not sent: alerts-off
 [WebServer] [alert] not sent: alerts-off
   ✓   4 tests/projects.spec.ts:140:1 › add requests sent at the same moment cannot get past the project limit (3.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
@@ -314,7 +333,7 @@ Running 10 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   5 tests/projects.spec.ts:156:1 › a repo that cannot be scanned is refused with the reason, inline (2.8s)
+  ✓   5 tests/projects.spec.ts:156:1 › a repo that cannot be scanned is refused with the reason, inline (2.4s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -323,31 +342,31 @@ Running 10 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "add-project" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
-  ✓   6 tests/projects.spec.ts:178:1 › one user's projects are not in another user's list (3.2s)
+  ✓   6 tests/projects.spec.ts:178:1 › one user's projects are not in another user's list (3.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   7 tests/projects.spec.ts:193:1 › an action needs a verified sign-in: no token, no project (45ms)
+  ✓   7 tests/projects.spec.ts:193:1 › an action needs a verified sign-in: no token, no project (66ms)
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
-  ✓   8 tests/projects.spec.ts:205:3 › the job room is locked down › a member cannot enqueue a job, and cannot read the queue (4.9s)
+  ✓   8 tests/projects.spec.ts:205:3 › the job room is locked down › a member cannot enqueue a job, and cannot read the queue (5.0s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
   ✓   9 tests/projects.spec.ts:228:3 › the job room is locked down › a signed-out visitor cannot enqueue a job either (2.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  10 tests/projects.spec.ts:239:1 › a signed-in member cannot call an owner-billed integration from the browser (537ms)
+  ✓  10 tests/projects.spec.ts:239:1 › a signed-in member cannot call an owner-billed integration from the browser (678ms)
 
-  10 passed (35.7s)
+  10 passed (36.7s)
 Secrets: prd (1 secret)
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:36:05 AM [generouted] scanned 9 routes in 10 ms
+[WebServer] 5:45:47 AM [generouted] scanned 9 routes in 11 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 4915 ms
+[WebServer]   VITE v8.3.8  ready in 5300 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -375,7 +394,7 @@ Running 14 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   1 tests/project-page.spec.ts:76:1 › the report sorts every dependency into its group and section, each in its own state (4.0s)
+  ✓   1 tests/project-page.spec.ts:76:1 › the report sorts every dependency into its group and section, each in its own state (3.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -387,7 +406,7 @@ Running 14 tests using 1 worker
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "undo-reviewed" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   2 tests/project-page.spec.ts:167:1 › a verdict is marked as reviewed, moves to the collapsed section, and undo brings it back (3.9s)
+  ✓   2 tests/project-page.spec.ts:167:1 › a verdict is marked as reviewed, moves to the collapsed section, and undo brings it back (3.8s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -397,8 +416,8 @@ Running 14 tests using 1 worker
 [WebServer] [action] "mark-reviewed" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+  ✓   3 tests/project-page.spec.ts:207:1 › the server refuses to review a verdict that is not in the project, or a failed one (4.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   3 tests/project-page.spec.ts:207:1 › the server refuses to review a verdict that is not in the project, or a failed one (4.2s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -418,7 +437,7 @@ Running 14 tests using 1 worker
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "mark-reviewed" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "undo-reviewed" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   5 tests/project-page.spec.ts:251:1 › the projects list shows each project's count of unreviewed breaking upgrades (3.5s)
+  ✓   5 tests/project-page.spec.ts:251:1 › the projects list shows each project's count of unreviewed breaking upgrades (3.4s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -434,8 +453,8 @@ Running 14 tests using 1 worker
 [WebServer] [action] "record-opened" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [action] "mark-reviewed" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   6 tests/project-page.spec.ts:277:1 › Bob cannot see Alice's private project by URL, and cannot act on it (8.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   6 tests/project-page.spec.ts:277:1 › Bob cannot see Alice's private project by URL, and cannot act on it (9.0s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -447,7 +466,7 @@ Running 14 tests using 1 worker
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   7 tests/project-page.spec.ts:324:1 › "check this one" reads only that dependency, and progress shows while it runs (6.4s)
+  ✓   7 tests/project-page.spec.ts:324:1 › "check this one" reads only that dependency, and progress shows while it runs (6.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -472,7 +491,7 @@ Running 14 tests using 1 worker
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   9 tests/project-page.spec.ts:389:1 › a verdict read from a later version is not shown to a project on an older one, until its own check reads the wider range (9.4s)
+  ✓   9 tests/project-page.spec.ts:389:1 › a verdict read from a later version is not shown to a project on an older one, until its own check reads the wider range (9.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -481,7 +500,7 @@ Running 14 tests using 1 worker
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  10 tests/project-page.spec.ts:420:1 › a check that cannot finish says so, keeps the report, and can be asked again (8.1s)
+  ✓  10 tests/project-page.spec.ts:420:1 › a check that cannot finish says so, keeps the report, and can be asked again (9.2s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -498,14 +517,14 @@ Running 14 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
-  ✓  12 tests/project-page.spec.ts:484:1 › scan progress is shown live while the first scan runs (6.6s)
+  ✓  12 tests/project-page.spec.ts:484:1 › scan progress is shown live while the first scan runs (6.3s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  13 tests/project-page.spec.ts:505:1 › a project with no dependencies shows an empty state, not an empty page (2.2s)
+  ✓  13 tests/project-page.spec.ts:505:1 › a project with no dependencies shows an empty state, not an empty page (2.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -513,20 +532,20 @@ Running 14 tests using 1 worker
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  14 tests/project-page.spec.ts:516:1 › opening a project records that it was opened (2.4s)
+  ✓  14 tests/project-page.spec.ts:516:1 › opening a project records that it was opened (2.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 
-  14 passed (1.3m)
+  14 passed (1.4m)
 Secrets: prd (1 secret)
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:37:29 AM [generouted] scanned 9 routes in 11 ms
+[WebServer] 5:47:12 AM [generouted] scanned 9 routes in 11 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 4909 ms
+[WebServer]   VITE v8.3.8  ready in 5143 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -561,7 +580,7 @@ Running 10 tests using 1 worker
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   1 tests/sharing.spec.ts:156:1 › a project is private until its owner switches it to public on the settings page, which then shows the link (6.3s)
+  ✓   1 tests/sharing.spec.ts:156:1 › a project is private until its owner switches it to public on the settings page, which then shows the link (6.1s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -573,8 +592,8 @@ Running 10 tests using 1 worker
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
-  ✓   2 tests/sharing.spec.ts:204:1 › a public report is readable signed-out, offers no actions, and what the reader received names nobody (10.3s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   2 tests/sharing.spec.ts:204:1 › a public report is readable signed-out, offers no actions, and what the reader received names nobody (10.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -592,8 +611,8 @@ Running 10 tests using 1 worker
 [WebServer] [action] "set-visibility" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   3 tests/sharing.spec.ts:298:1 › another signed-in user reads a public report the same way: no actions, no owner (12.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   3 tests/sharing.spec.ts:298:1 › another signed-in user reads a public report the same way: no actions, no owner (12.2s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -609,8 +628,8 @@ Running 10 tests using 1 worker
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   4 tests/sharing.spec.ts:335:1 › a private project's link shows "not available", signed-out and to Bob, exactly like a link to nothing (15.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   4 tests/sharing.spec.ts:335:1 › a private project's link shows "not available", signed-out and to Bob, exactly like a link to nothing (16.7s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -665,38 +684,38 @@ Running 10 tests using 1 worker
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "set-visibility" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   7 tests/sharing.spec.ts:499:1 › a public report follows its project: a check that finishes shows up for the reader (6.2s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   7 tests/sharing.spec.ts:499:1 › a public report follows its project: a check that finishes shows up for the reader (5.6s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-publish-example" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   8 tests/sharing.spec.ts:518:1 › the landing page says what bumpcheck does, links to the example report, and offers sign-in (3.6s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓   8 tests/sharing.spec.ts:518:1 › the landing page says what bumpcheck does, links to the example report, and offers sign-in (3.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   9 tests/sharing.spec.ts:556:1 › the test-only example fixture is not an open door (14ms)
+  ✓   9 tests/sharing.spec.ts:556:1 › the test-only example fixture is not an open door (17ms)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-my-projects" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [action] "test-reset-fake-world" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  10 tests/sharing.spec.ts:561:1 › nothing public is left behind (4.7s)
+  ✓  10 tests/sharing.spec.ts:561:1 › nothing public is left behind (5.2s)
 
-  10 passed (1.6m)
+  10 passed (1.7m)
 Secrets: prd (1 secret)
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:39:11 AM [generouted] scanned 9 routes in 14 ms
+[WebServer] 5:48:55 AM [generouted] scanned 9 routes in 14 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 5804 ms
+[WebServer]   VITE v8.3.8  ready in 6210 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -735,7 +754,7 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-read-outbox" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  1 tests/alerts.spec.ts:142:1 › alerts are off by default; the settings toggles persist across a reload (8.0s)
+  ✓  1 tests/alerts.spec.ts:142:1 › alerts are off by default; the settings toggles persist across a reload (7.4s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -748,7 +767,7 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 27ms
+[WebServer] [cron] daily-scans ok 29ms
 [WebServer] [alert] sent, 2 verdicts
 [WebServer] [action] "test-read-outbox" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
@@ -756,12 +775,12 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 41ms
+[WebServer] [cron] daily-scans ok 29ms
 [WebServer] [alert] not sent: nothing-new
 [WebServer] [action] "test-read-outbox" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  2 tests/alerts.spec.ts:180:1 › a daily scan sends one alert to the owner, logs it, and does not send it again (10.8s)
+  ✓  2 tests/alerts.spec.ts:180:1 › a daily scan sends one alert to the owner, logs it, and does not send it again (9.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -785,7 +804,7 @@ Running 9 tests using 1 worker
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "send-test-email" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-read-outbox" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  3 tests/alerts.spec.ts:232:1 › a test send appears in the log, and the fourth test send in a day is refused (8.0s)
+  ✓  3 tests/alerts.spec.ts:232:1 › a test send appears in the log, and the fourth test send in a day is refused (8.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -796,8 +815,8 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "send-test-email" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-read-outbox" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  4 tests/alerts.spec.ts:288:1 › a test email that cannot be sent is shown as failed, with the reason (4.2s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓  4 tests/alerts.spec.ts:288:1 › a test email that cannot be sent is shown as failed, with the reason (3.9s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -814,7 +833,7 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "set-alerts" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "set-alerts" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  5 tests/alerts.spec.ts:310:1 › the unsubscribe link turns alerts off while signed out: the page asks once, and one click does it (8.9s)
+  ✓  5 tests/alerts.spec.ts:310:1 › the unsubscribe link turns alerts off while signed out: the page asks once, and one click does it (6.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -833,9 +852,9 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-email-allowance" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓  6 tests/alerts.spec.ts:362:1 › a mail client's one-click POST unsubscribes without a sign-in, and only the project the link names (7.5s)
+  ✓  6 tests/alerts.spec.ts:362:1 › a mail client's one-click POST unsubscribes without a sign-in, and only the project the link names (7.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  7 tests/alerts.spec.ts:398:1 › a bad unsubscribe link gets a plain error page (109ms)
+  ✓  7 tests/alerts.spec.ts:398:1 › a bad unsubscribe link gets a plain error page (123ms)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-my-projects" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
@@ -856,8 +875,8 @@ Running 9 tests using 1 worker
 [WebServer] [action] "test-read-outbox" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [RecordRoom] webSocketClose code=1005 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓  8 tests/alerts.spec.ts:410:1 › only the owner can change alerts, send a test, or delete a project (10.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  8 tests/alerts.spec.ts:410:1 › only the owner can change alerts, send a test, or delete a project (11.8s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -882,21 +901,21 @@ Running 9 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [alert] not sent: alerts-off
-  ✓  9 tests/alerts.spec.ts:448:1 › delete removes the project, its send log and its public report, and frees a slot (19.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓  9 tests/alerts.spec.ts:448:1 › delete removes the project, its send log and its public report, and frees a slot (17.8s)
 
-  9 passed (1.5m)
+  9 passed (1.4m)
 Secrets: prd (1 secret)
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 BEWARE: your OS is not officially supported by Playwright; downloading fallback build for ubuntu24.04-x64.
 [WebServer] Using secrets defined in .dev.vars
-[WebServer] 5:40:42 AM [generouted] scanned 9 routes in 14 ms
+[WebServer] 5:50:21 AM [generouted] scanned 9 routes in 15 ms
 [WebServer] [ESLint] Found 0 error and 0 warning
 [WebServer] Using secrets defined in .dev.vars
 [WebServer] 
-[WebServer]   VITE v8.3.8  ready in 6231 ms
+[WebServer]   VITE v8.3.8  ready in 6383 ms
 [WebServer] 
 [WebServer]   ➜  Local:   http://127.0.0.1:5173/
 [WebServer] 
@@ -926,33 +945,33 @@ Running 13 tests using 1 worker
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 0, stalled 0
+[WebServer] [cron] daily-scans ok 5ms
+[WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [cron] daily-scans: enqueued 1, stalled 0
+[WebServer] [cron] daily-scans ok 29ms
+[WebServer] [alert] not sent: alerts-off
+[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [cron] daily-scans: enqueued 0, stalled 0
+[WebServer] [cron] daily-scans ok 6ms
+  ✓   1 tests/scheduling.spec.ts:132:1 › the scheduled task, triggered directly, re-scans a due project and leaves one that is not due (9.4s)
+[WebServer] [RecordRoom] webSocketClose code=1001 reason=
+[WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [alert] not sent: alerts-off
+[WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
+[WebServer] [cron] daily-scans: enqueued 0, stalled 0
 [WebServer] [cron] daily-scans ok 6ms
 [WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 26ms
-[WebServer] [alert] not sent: alerts-off
-[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [cron] daily-scans: enqueued 0, stalled 0
-[WebServer] [cron] daily-scans ok 7ms
-  ✓   1 tests/scheduling.spec.ts:132:1 › the scheduled task, triggered directly, re-scans a due project and leaves one that is not due (9.8s)
-[WebServer] [RecordRoom] webSocketClose code=1001 reason=
-[WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [alert] not sent: alerts-off
-[WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-[WebServer] [cron] daily-scans: enqueued 0, stalled 0
-[WebServer] [cron] daily-scans ok 7ms
-[WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 24ms
+[WebServer] [cron] daily-scans ok 37ms
 [WebServer] [alert] not sent: alerts-off
-  ✓   2 tests/scheduling.spec.ts:163:1 › an idle project is not scanned until its owner opens it again (7.7s)
+  ✓   2 tests/scheduling.spec.ts:163:1 › an idle project is not scanned until its owner opens it again (7.4s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -967,7 +986,7 @@ Running 13 tests using 1 worker
 [WebServer] [action] "scan-now" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "scan-now" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   3 tests/scheduling.spec.ts:194:1 › scan now inside the cooldown shows a notice with the time it returns; after the cooldown it scans (4.6s)
+  ✓   3 tests/scheduling.spec.ts:194:1 › scan now inside the cooldown shows a notice with the time it returns; after the cooldown it scans (4.1s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -978,7 +997,7 @@ Running 13 tests using 1 worker
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "scan-now" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   4 tests/scheduling.spec.ts:236:1 › scan now is refused while a scan is running: one scan at a time (7.1s)
+  ✓   4 tests/scheduling.spec.ts:236:1 › scan now is refused while a scan is running: one scan at a time (6.7s)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -987,9 +1006,9 @@ Running 13 tests using 1 worker
 [WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 28ms
+[WebServer] [cron] daily-scans ok 31ms
 [WebServer] [alert] not sent: alerts-off
-  ✓   5 tests/scheduling.spec.ts:260:1 › a scan that stops at its limit says so, and a later scan reads the rest (4.7s)
+  ✓   5 tests/scheduling.spec.ts:260:1 › a scan that stops at its limit says so, and a later scan reads the rest (4.8s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -1003,10 +1022,10 @@ Running 13 tests using 1 worker
 [WebServer] [action] "test-set-project-times" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 1, stalled 0
-[WebServer] [cron] daily-scans ok 28ms
+[WebServer] [cron] daily-scans ok 26ms
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "check-dependency" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   6 tests/scheduling.spec.ts:293:1 › the app's daily AI limit stops the judge on every path, and the page says it is a limit (6.6s)
+  ✓   6 tests/scheduling.spec.ts:293:1 › the app's daily AI limit stops the judge on every path, and the page says it is a limit (4.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -1018,14 +1037,14 @@ Running 13 tests using 1 worker
 [WebServer] [action] "test-run-scheduled-task" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [cron] daily-scans: enqueued 0, stalled 0
 [WebServer] [cron] daily-scans ok 6ms
-  ✓   7 tests/scheduling.spec.ts:339:1 › a failed scan shows its reason and a retry, and the retry is under the cooldown (15.5s)
+  ✓   7 tests/scheduling.spec.ts:339:1 › a failed scan shows its reason and a retry, and the retry is under the cooldown (15.9s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [alert] not sent: alerts-off
 [WebServer] [action] "record-opened" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
-  ✓   8 tests/scheduling.spec.ts:377:1 › an upgrade whose release notes GitHub refused is shown as not read this time, with no verdict (2.8s)
+  ✓   8 tests/scheduling.spec.ts:377:1 › an upgrade whose release notes GitHub refused is shown as not read this time, with no verdict (2.5s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
@@ -1058,19 +1077,19 @@ Running 13 tests using 1 worker
 [WebServer] [action] "add-project" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "add-project" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓   9 tests/scheduling.spec.ts:393:1 › add-project attempts are capped per user per day, and the refusal says when the cap resets (11.5s)
+  ✓   9 tests/scheduling.spec.ts:393:1 › add-project attempts are capped per user per day, and the refusal says when the cap resets (11.3s)
 [WebServer] [alert] not sent: alerts-off
-  ✓  10 tests/scheduling.spec.ts:426:3 › the cron room is locked down › a member cannot trigger, pause or resume the scheduled task (4.4s)
+  ✓  10 tests/scheduling.spec.ts:426:3 › the cron room is locked down › a member cannot trigger, pause or resume the scheduled task (4.6s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
   ✓  11 tests/scheduling.spec.ts:433:3 › the cron room is locked down › a signed-out visitor cannot either (4.0s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
-  ✓  12 tests/scheduling.spec.ts:439:3 › the cron room is locked down › the test-only trigger is not an open door: it needs a sign-in (19ms)
+  ✓  12 tests/scheduling.spec.ts:439:3 › the cron room is locked down › the test-only trigger is not an open door: it needs a sign-in (18ms)
 [WebServer] [action] "test-reset-my-projects" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-fake-world" caller=UnVsF80K2X8PRW1zGqY4cMxDAuaa7CZB
 [WebServer] [action] "test-reset-my-projects" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
 [WebServer] [action] "test-reset-fake-world" caller=0VFOJ3MLzLnqL1bbkBnw8O9yH2vFUrUE
-  ✓  13 tests/scheduling.spec.ts:445:1 › nothing is left behind for the next run of the scheduled task (4.0s)
 [WebServer] [RecordRoom] webSocketClose code=1001 reason=
+  ✓  13 tests/scheduling.spec.ts:445:1 › nothing is left behind for the next run of the scheduled task (2.8s)
 
-  13 passed (1.6m)
+  13 passed (1.5m)
 ```

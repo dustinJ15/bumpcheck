@@ -157,15 +157,41 @@ describe('the size bounds: prompt, validator and output cap agree', () => {
     maxChanges: VERDICT_SHAPE.changesPerVerdict,
   }
 
-  it('the prompt states every bound from config', () => {
+  /** A character limit as the prompt states it: a share of the validator's limit, for headroom. */
+  const asked = (validatorLimit: number) => Math.floor(validatorLimit * JUDGE.promptShare)
+
+  it('the prompt states every bound from config, the character limits reduced by JUDGE.promptShare', () => {
+    expect(JUDGE.promptShare).toBeGreaterThan(0)
+    expect(JUDGE.promptShare).toBeLessThan(1)
     const { system } = buildVerdictPrompt(input)
+    // The count of changes is the validator's own: the two must agree.
     expect(system).toContain(`at most ${VERDICT_SHAPE.changesPerVerdict} changes, the most important first`)
-    expect(system).toContain(`"summary": at most ${VERDICT_SHAPE.summaryChars} characters`)
-    expect(system).toContain(`"title": at most ${VERDICT_SHAPE.titleChars} characters`)
-    expect(system).toContain(`"whatChanged" and "whatToDo": at most ${VERDICT_SHAPE.noteChars} characters each`)
+    expect(system).toContain(`"summary": at most ${asked(VERDICT_SHAPE.summaryChars)} characters`)
+    expect(system).toContain(`"title": at most ${asked(VERDICT_SHAPE.titleChars)} characters`)
+    expect(system).toContain(`"whatChanged" and "whatToDo": at most ${asked(VERDICT_SHAPE.noteChars)} characters each`)
     expect(system).toContain(
-      `"apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${VERDICT_SHAPE.apiNameChars} characters each`,
+      `"apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${asked(VERDICT_SHAPE.apiNameChars)} characters each`,
     )
+    // The validator's own character limits are not what the model is told.
+    expect(system).not.toContain(`at most ${VERDICT_SHAPE.noteChars} characters`)
+    expect(system).not.toContain(`at most ${VERDICT_SHAPE.summaryChars} characters`)
+  })
+
+  it('an answer longer than the prompt asked, but within the validator\'s limits, is accepted', () => {
+    const longer = (validatorLimit: number, letter: string) => letter.repeat(asked(validatorLimit) + 1)
+    const answer = {
+      label: 'breaking',
+      summary: longer(VERDICT_SHAPE.summaryChars, 's'),
+      changes: [
+        {
+          title: longer(VERDICT_SHAPE.titleChars, 't'),
+          whatChanged: longer(VERDICT_SHAPE.noteChars, 'w'),
+          apiNames: [longer(VERDICT_SHAPE.apiNameChars, 'a')],
+          whatToDo: longer(VERDICT_SHAPE.noteChars, 'd'),
+        },
+      ],
+    }
+    expect(validateVerdictResponse(answer).ok).toBe(true)
   })
 
   it('the shorter request asks for fewer changes', () => {

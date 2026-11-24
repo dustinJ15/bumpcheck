@@ -10,7 +10,7 @@
 
 import semver from 'semver'
 import { z } from 'zod'
-import { VERDICT_SHAPE } from '../config'
+import { JUDGE, VERDICT_SHAPE } from '../config'
 import type { VerdictChange, VerdictLabel } from './model'
 
 /**
@@ -122,6 +122,15 @@ export interface VerdictPromptInput {
   maxChanges: number
 }
 
+/**
+ * A character limit as the prompt states it: a share of the validator's
+ * limit (JUDGE.promptShare), so an answer that runs a little over what was
+ * asked is still accepted.
+ */
+function asked(validatorLimit: number): number {
+  return Math.floor(validatorLimit * JUDGE.promptShare)
+}
+
 /** The system and user prompts that ask the judge for a verdict. */
 export function buildVerdictPrompt(input: VerdictPromptInput): { system: string; prompt: string } {
   const system = [
@@ -136,11 +145,11 @@ export function buildVerdictPrompt(input: VerdictPromptInput): { system: string;
     '- "apiNames": the exact exported names, methods, options or CLI flags affected, as code would spell them. Empty if none are named.',
     '- "whatToDo": one concrete instruction for updating code.',
     '- Use only the changelog text. Do not add a confidence score or any other field.',
-    'Keep every field short. An answer over these limits is rejected:',
-    `- "summary": at most ${VERDICT_SHAPE.summaryChars} characters.`,
-    `- "title": at most ${VERDICT_SHAPE.titleChars} characters.`,
-    `- "whatChanged" and "whatToDo": at most ${VERDICT_SHAPE.noteChars} characters each.`,
-    `- "apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${VERDICT_SHAPE.apiNameChars} characters each.`,
+    'Keep every field short:',
+    `- "summary": at most ${asked(VERDICT_SHAPE.summaryChars)} characters.`,
+    `- "title": at most ${asked(VERDICT_SHAPE.titleChars)} characters.`,
+    `- "whatChanged" and "whatToDo": at most ${asked(VERDICT_SHAPE.noteChars)} characters each.`,
+    `- "apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${asked(VERDICT_SHAPE.apiNameChars)} characters each.`,
   ].join('\n')
 
   const prompt = [
