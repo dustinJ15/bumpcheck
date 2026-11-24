@@ -422,3 +422,10 @@ unverified against real services. Dustin needs to run it or allow it.
 
 The worker's three open questions (no rate limit on add-project, a refused Releases request
 cached for everyone, projects stuck in "queued") are now work items in ticket 04.
+
+**Live check, run 2026-11-24 by the supervisor (after ticket 06, so it covered the scan and
+the test email together).** Passed. Spent 7.90 credits (US$0.079): Claude 19 calls $0.0426,
+GitHub 16 calls $0.0234, email 1 call $0.013. The scan finished with 13 dependencies and 3
+breaking. **But 7 of the 12 verdicts failed** with "response is not valid JSON", each after
+two paid attempts. That is ticket 06b. The test email was accepted by the email integration
+and logged as sent; it went to the Alice test account's address, which has no inbox.

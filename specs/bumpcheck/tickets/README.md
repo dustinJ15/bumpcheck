@@ -10,6 +10,7 @@ Ten tickets, worked in order. Each one is a file in this folder.
 | 04 | [Scheduling and limits](./04-scheduling-and-limits.md) | yes | worker |
 | 05 | [Public sharing and landing](./05-sharing-and-landing.md) | yes | worker |
 | 06 | [Email alerts](./06-email-alerts.md) | yes | worker |
+| 06b | [Judge answers cut off](./06b-judge-output-fix.md) | no | worker (added after the live check) |
 | 07 | [Polish and design](./07-polish-and-design.md) | yes | worker |
 | 08 | [Deploy checkpoint](./08-deploy-checkpoint.md) | no | **supervisor / Dustin only** |
 | 09 | [Impact analysis: engine](./09-impact-engine.md) | no | worker |
