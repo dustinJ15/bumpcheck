@@ -8,7 +8,7 @@
  */
 
 import type { AlertLogEntry, ProjectScanFields, RepoRef, SourceRepo, Verdict } from '../core/model'
-import { validateVerdictResponse, type VerdictPromptInput } from '../core/verdict'
+import { readJudgeAnswer, validateVerdictResponse, type VerdictPromptInput } from '../core/verdict'
 import type {
   AlertStore,
   ChangelogFile,
@@ -123,6 +123,13 @@ export function sourceKey(source: SourceRepo): string {
  */
 export type FakeJudgeResponder = (input: VerdictPromptInput, attempt: number) => unknown
 
+/**
+ * Return this from a responder to make the fake model stop at the output
+ * cap, half way through its JSON, as a real model does when its answer is
+ * too long.
+ */
+export const FAKE_CUT_OFF = Symbol('answer cut off at the output cap')
+
 /** A good, deterministic verdict: breaking, naming the package. */
 export const defaultFakeResponder: FakeJudgeResponder = (input) => ({
   label: 'breaking',
@@ -146,7 +153,9 @@ export class FakeJudge implements Judge {
   async judge(input: VerdictPromptInput): Promise<JudgeResult> {
     this.calls.push(input)
     const attempt = this.calls.filter((c) => c.packageName === input.packageName).length
-    return validateVerdictResponse(this.respond(input, attempt))
+    const answer = this.respond(input, attempt)
+    if (answer === FAKE_CUT_OFF) return readJudgeAnswer({ text: '{"label": "breaking", "summ', finishReason: 'length' })
+    return validateVerdictResponse(answer)
   }
 }
 

@@ -46,7 +46,7 @@
  * stopped without saying so (src/engine/schedule.ts).
  */
 
-import { JUDGE, SCAN_PACING } from '../config'
+import { JUDGE, SCAN_PACING, VERDICT_SHAPE } from '../config'
 import { sliceChangelog, sliceReleases, type SlicedChangelog } from '../core/changelog'
 import { isDailyCeilingReached, mayJudgeAnother, nextDueTime, utcDay } from '../core/limits'
 import type { DependencyResult, ProjectScanFields, ScanReport, SourceRepo, Verdict } from '../core/model'
@@ -418,14 +418,17 @@ async function judgeNext(services: ScanServices, state: ScanState): Promise<Scan
   }
 
   let result: JudgeResult = { ok: false, error: 'not attempted' }
+  let maxChanges: number = VERDICT_SHAPE.changesPerVerdict
   for (let attempt = 1; attempt <= JUDGE.attemptsPerVerdict; attempt++) {
     // The retry is an AI call too, so it is checked against the ceiling.
     if (attempt > 1 && isDailyCeilingReached({ aiCallsToday: await services.store.getAiCalls(day) })) {
       return deferRest(state, 'daily-ceiling')
     }
     await services.store.addAiCall(day)
-    result = await askJudge(services.judge, input)
+    result = await askJudge(services.judge, { ...input, maxChanges })
     if (result.ok) break
+    // The same request would be cut off again: ask for fewer changes.
+    if (result.cutOff) maxChanges = VERDICT_SHAPE.shorterChangesPerVerdict
   }
 
   const verdict: Verdict = result.ok

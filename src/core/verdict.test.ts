@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { VERDICT_SHAPE } from '../config'
-import { buildVerdictPrompt, validateVerdictResponse, verdictKey } from './verdict'
+import { JUDGE, VERDICT_SHAPE } from '../config'
+import { buildVerdictPrompt, CUT_OFF_ERROR, readJudgeAnswer, validateVerdictResponse, verdictKey } from './verdict'
 
 const good = {
   label: 'breaking',
@@ -111,6 +111,7 @@ describe('buildVerdictPrompt', () => {
     toVersion: '5.1.0',
     changelog: '## 5.0.0\n- removed app.del()',
     truncated: false,
+    maxChanges: VERDICT_SHAPE.changesPerVerdict,
   }
 
   it('names the package and versions and carries the changelog', () => {
@@ -128,5 +129,98 @@ describe('buildVerdictPrompt', () => {
   it('tells the judge when the changelog was cut', () => {
     expect(buildVerdictPrompt({ ...input, truncated: true }).prompt).toMatch(/cut at a length limit/)
     expect(buildVerdictPrompt(input).prompt).not.toMatch(/cut at a length limit/)
+  })
+})
+
+/** The biggest answer the validator accepts: every list full, every field at its length limit. */
+function answerAtTheBounds() {
+  const change = {
+    title: 't'.repeat(VERDICT_SHAPE.titleChars),
+    whatChanged: 'w'.repeat(VERDICT_SHAPE.noteChars),
+    apiNames: Array(VERDICT_SHAPE.apiNamesPerChange).fill('a'.repeat(VERDICT_SHAPE.apiNameChars)),
+    whatToDo: 'd'.repeat(VERDICT_SHAPE.noteChars),
+  }
+  return {
+    label: 'breaking',
+    summary: 's'.repeat(VERDICT_SHAPE.summaryChars),
+    changes: Array(VERDICT_SHAPE.changesPerVerdict).fill(change),
+  }
+}
+
+describe('the size bounds: prompt, validator and output cap agree', () => {
+  const input = {
+    packageName: 'express',
+    fromVersion: '4.17.1',
+    toVersion: '5.1.0',
+    changelog: '## 5.0.0\n- removed app.del()',
+    truncated: false,
+    maxChanges: VERDICT_SHAPE.changesPerVerdict,
+  }
+
+  it('the prompt states every bound from config', () => {
+    const { system } = buildVerdictPrompt(input)
+    expect(system).toContain(`at most ${VERDICT_SHAPE.changesPerVerdict} changes, the most important first`)
+    expect(system).toContain(`"summary": at most ${VERDICT_SHAPE.summaryChars} characters`)
+    expect(system).toContain(`"title": at most ${VERDICT_SHAPE.titleChars} characters`)
+    expect(system).toContain(`"whatChanged" and "whatToDo": at most ${VERDICT_SHAPE.noteChars} characters each`)
+    expect(system).toContain(
+      `"apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${VERDICT_SHAPE.apiNameChars} characters each`,
+    )
+  })
+
+  it('the shorter request asks for fewer changes', () => {
+    const { system } = buildVerdictPrompt({ ...input, maxChanges: VERDICT_SHAPE.shorterChangesPerVerdict })
+    expect(VERDICT_SHAPE.shorterChangesPerVerdict).toBeLessThan(VERDICT_SHAPE.changesPerVerdict)
+    expect(system).toContain(`at most ${VERDICT_SHAPE.shorterChangesPerVerdict} changes, the most important first`)
+    expect(system).not.toContain(`at most ${VERDICT_SHAPE.changesPerVerdict} changes`)
+  })
+
+  it('the validator accepts an answer exactly at the bounds', () => {
+    expect(validateVerdictResponse(answerAtTheBounds()).ok).toBe(true)
+  })
+
+  it.each([
+    ['one change too many', (a: ReturnType<typeof answerAtTheBounds>) => a.changes.push(a.changes[0])],
+    ['a summary one character too long', (a: ReturnType<typeof answerAtTheBounds>) => (a.summary += 's')],
+    ['a title one character too long', (a: ReturnType<typeof answerAtTheBounds>) => (a.changes[0] = { ...a.changes[0], title: a.changes[0].title + 't' })],
+    ['a whatChanged one character too long', (a: ReturnType<typeof answerAtTheBounds>) => (a.changes[0] = { ...a.changes[0], whatChanged: a.changes[0].whatChanged + 'w' })],
+    ['a whatToDo one character too long', (a: ReturnType<typeof answerAtTheBounds>) => (a.changes[0] = { ...a.changes[0], whatToDo: a.changes[0].whatToDo + 'd' })],
+    ['one API name too many', (a: ReturnType<typeof answerAtTheBounds>) => (a.changes[0] = { ...a.changes[0], apiNames: [...a.changes[0].apiNames, 'x'] })],
+    ['an API name one character too long', (a: ReturnType<typeof answerAtTheBounds>) => (a.changes[0] = { ...a.changes[0], apiNames: ['a'.repeat(VERDICT_SHAPE.apiNameChars + 1)] })],
+  ])('the validator rejects %s', (_name, overBy) => {
+    const answer = answerAtTheBounds()
+    answer.changes = [...answer.changes]
+    overBy(answer)
+    expect(validateVerdictResponse(answer).ok).toBe(false)
+  })
+
+  it('the output cap fits the biggest answer the validator accepts, even pretty-printed', () => {
+    const biggest = JSON.stringify(answerAtTheBounds(), null, 2)
+    expect(Math.ceil(biggest.length / JUDGE.worstCaseCharsPerToken)).toBeLessThanOrEqual(JUDGE.maxOutputTokens)
+  })
+})
+
+describe('readJudgeAnswer: why the model stopped', () => {
+  const text = JSON.stringify(good)
+
+  it('an answer that stopped at the output cap is a "cut off" failure, not "not valid JSON"', () => {
+    expect(readJudgeAnswer({ text: '{"label": "breaking", "summary": "Express 5 rem', finishReason: 'length' })).toEqual({
+      ok: false,
+      cutOff: true,
+      error: CUT_OFF_ERROR,
+    })
+    expect(CUT_OFF_ERROR).toBe('the answer was too long and was cut off')
+  })
+
+  it('is cut off even when the cut text happens to parse: the answer is incomplete', () => {
+    expect(readJudgeAnswer({ text, finishReason: 'length' })).toMatchObject({ ok: false, cutOff: true })
+  })
+
+  it('an answer that stopped on its own goes to the validator', () => {
+    expect(readJudgeAnswer({ text, finishReason: 'stop' })).toEqual({ ok: true, verdict: good })
+    expect(readJudgeAnswer({ text: 'not json', finishReason: 'stop' })).toEqual({
+      ok: false,
+      error: 'response is not valid JSON',
+    })
   })
 })

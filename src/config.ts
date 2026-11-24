@@ -78,27 +78,54 @@ export const ALERT_EMAIL = {
 export const JUDGE = {
   /** The model that writes verdicts. */
   model: 'claude-haiku-5-5',
-  /** Output cap per verdict, in tokens. */
-  maxOutputTokens: 1500,
+  /**
+   * Output cap per verdict, in tokens. Sized to fit the biggest answer the
+   * validator accepts (VERDICT_SHAPE below), so an answer that keeps to the
+   * bounds is never cut off:
+   *
+   *   per change: title 100 + whatChanged 300 + whatToDo 300
+   *               + 5 API names x 60 = 1,000 characters of text
+   *   whole answer at the bounds, pretty-printed JSON (keys, quotes,
+   *   indents): 8 changes + a 400-character summary = 9,789 characters
+   *   9,789 / 3 characters per token = 3,263 tokens
+   *
+   * 3,500 leaves room for escaped quotes and a ```json fence. The test
+   * "the output cap fits the biggest answer..." in src/core/verdict.test.ts
+   * redoes this sum, so changing a bound without the cap goes red.
+   */
+  maxOutputTokens: 3500,
+  /**
+   * The few characters per token assumed above. Real text averages more;
+   * code names and JSON punctuation can be fewer, so 3 is on the safe side.
+   */
+  worstCaseCharsPerToken: 3,
   /** Changelog text longer than this is cut, and the verdict says so. */
   changelogInputCapChars: 30_000,
-  /** Attempts per verdict: one try and one retry, then the verdict is "failed". */
+  /**
+   * Attempts per verdict: one try and one retry, then the verdict is
+   * "failed". When the first answer was cut off at the output cap, the retry
+   * asks for fewer changes (VERDICT_SHAPE.shorterChangesPerVerdict).
+   */
   attemptsPerVerdict: 2,
 } as const
 
 /**
- * Size limits on a verdict the judge returns. A response over any of these
- * is rejected (and retried), so one runaway answer cannot bloat the shared
- * cache that every project reads.
+ * Size limits on a verdict the judge returns. The prompt states each one to
+ * the model, and a response over any of them is rejected (and retried), so
+ * one runaway answer cannot bloat the shared cache that every project reads
+ * or run past the output cap above.
  */
 export const VERDICT_SHAPE = {
-  summaryChars: 1000,
-  changesPerVerdict: 30,
-  titleChars: 200,
+  summaryChars: 400,
+  /** Changes per verdict, the most important first. */
+  changesPerVerdict: 8,
+  /** Asked for in the retry after an answer was cut off at the output cap. */
+  shorterChangesPerVerdict: 3,
+  titleChars: 100,
   /** For "whatChanged" and "whatToDo". */
-  noteChars: 2000,
-  apiNamesPerChange: 50,
-  apiNameChars: 200,
+  noteChars: 300,
+  apiNamesPerChange: 5,
+  apiNameChars: 60,
 } as const
 
 export const IMPACT = {

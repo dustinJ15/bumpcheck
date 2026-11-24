@@ -69,7 +69,22 @@ export interface VerdictResponse {
 
 export type VerdictValidation =
   | { ok: true; verdict: VerdictResponse }
-  | { ok: false; error: string }
+  | { ok: false; error: string; cutOff?: true }
+
+/** The failure reason stored when the model stopped at the output cap. */
+export const CUT_OFF_ERROR = 'the answer was too long and was cut off'
+
+/**
+ * Reads a model's answer, given why it stopped. The AI SDK reports
+ * `finishReason: 'length'` when the answer hit the output cap: the text is
+ * then incomplete, so it is a "cut off" failure (`cutOff: true`, which tells
+ * the engine to ask for a shorter answer next time) rather than being handed
+ * to the validator and failing as "not valid JSON".
+ */
+export function readJudgeAnswer(answer: { text: string; finishReason: string }): VerdictValidation {
+  if (answer.finishReason === 'length') return { ok: false, cutOff: true, error: CUT_OFF_ERROR }
+  return validateVerdictResponse(answer.text)
+}
 
 /**
  * Validates a model response: raw text (optionally wrapped in a ```json
@@ -100,6 +115,11 @@ export interface VerdictPromptInput {
   changelog: string
   /** True when the changelog was cut at the input cap. */
   truncated: boolean
+  /**
+   * How many changes the answer may list. VERDICT_SHAPE.changesPerVerdict
+   * normally; fewer in the retry after an answer was cut off.
+   */
+  maxChanges: number
 }
 
 /** The system and user prompts that ask the judge for a verdict. */
@@ -109,12 +129,18 @@ export function buildVerdictPrompt(input: VerdictPromptInput): { system: string;
     'Answer with one JSON object and nothing else, matching this shape:',
     '{"label": "breaking" | "safe" | "unclear", "summary": string, "changes": [{"title": string, "whatChanged": string, "apiNames": string[], "whatToDo": string}]}',
     'Rules:',
-    '- "breaking": the changelog states at least one change that can break code written for the old version. List every such change.',
+    '- "breaking": the changelog states at least one change that can break code written for the old version.',
     '- "safe": the changelog clearly shows no breaking change. "changes" may be empty.',
     '- "unclear": the changelog is too vague to tell. Do not guess.',
+    `- "changes": the breaking changes, at most ${input.maxChanges} changes, the most important first. If there are more, say so in "summary".`,
     '- "apiNames": the exact exported names, methods, options or CLI flags affected, as code would spell them. Empty if none are named.',
     '- "whatToDo": one concrete instruction for updating code.',
     '- Use only the changelog text. Do not add a confidence score or any other field.',
+    'Keep every field short. An answer over these limits is rejected:',
+    `- "summary": at most ${VERDICT_SHAPE.summaryChars} characters.`,
+    `- "title": at most ${VERDICT_SHAPE.titleChars} characters.`,
+    `- "whatChanged" and "whatToDo": at most ${VERDICT_SHAPE.noteChars} characters each.`,
+    `- "apiNames": at most ${VERDICT_SHAPE.apiNamesPerChange} names of at most ${VERDICT_SHAPE.apiNameChars} characters each.`,
   ].join('\n')
 
   const prompt = [

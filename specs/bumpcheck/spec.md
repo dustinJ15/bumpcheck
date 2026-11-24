@@ -375,7 +375,8 @@ can do nothing else.
 | Re-scan interval | 24 hours |
 | Idle pause | 7 days without the owner opening the project |
 | Model | `claude-haiku-5-5` |
-| Output cap per verdict | about 1,500 tokens |
+| Output cap per verdict | 3,500 tokens, sized to the biggest answer the bounds below allow (ticket 06b) |
+| Verdict size | at most 8 changes (3 in the retry after a cut-off answer); short fields, limits in `src/config.ts` |
 | Changelog input cap | about 30,000 characters |
 | Judge attempts per verdict | 2, then "failed" |
 | Test emails | 3 per user per day |

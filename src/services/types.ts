@@ -81,10 +81,14 @@ export interface SourceHost {
 
 // ------------------------------------------------------------------- judge
 
-/** A judge either returns a validated verdict or says why it could not. */
+/**
+ * A judge either returns a validated verdict or says why it could not.
+ * `cutOff` marks an answer that stopped at the output cap; the engine then
+ * asks for a shorter answer on the retry.
+ */
 export type JudgeResult =
   | { ok: true; verdict: VerdictResponse }
-  | { ok: false; error: string }
+  | { ok: false; error: string; cutOff?: true }
 
 /** Reads a changelog and returns a verdict. Real: Claude via the platform's AI helper. */
 export interface Judge {

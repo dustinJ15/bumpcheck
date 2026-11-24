@@ -3,11 +3,13 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { LIMITS } from '../config'
+import { LIMITS, VERDICT_SHAPE } from '../config'
 import { utcDay } from '../core/limits'
+import { CUT_OFF_ERROR } from '../core/verdict'
 import type { DependencyResult, Verdict } from '../core/model'
 import { selectDueProjects } from '../core/schedule'
 import {
+  FAKE_CUT_OFF,
   FakeClock,
   FakeJudge,
   FakeRegistry,
@@ -503,6 +505,65 @@ describe('bad judge responses', () => {
     await runScan(w.services, startScan(PROJECT))
     expect(w.judge.calls).toHaveLength(2)
     expect(w.store.verdicts.get('express@4->5.1')).toMatchObject({ status: 'failed', failureReason: 'model unavailable' })
+  })
+})
+
+describe('an answer cut off at the output cap', () => {
+  const express = {
+    dependencies: { express: '^4.0.0' },
+    packages: [pkg('express', '5.1.0')],
+    changelogs: { 'acme/express': changelogFor('5.0.0') },
+  }
+
+  it('is retried with the shorter request, and the retry is stored as ready', async () => {
+    const w = world({
+      ...express,
+      respond: (input, attempt) => (attempt === 1 ? FAKE_CUT_OFF : defaultFakeResponder(input, attempt)),
+    })
+
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls.map((c) => c.maxChanges)).toEqual([
+      VERDICT_SHAPE.changesPerVerdict,
+      VERDICT_SHAPE.shorterChangesPerVerdict,
+    ])
+    // Both attempts are AI calls.
+    expect(w.store.aiCalls.get(utcDay(w.clock.now()))).toBe(2)
+    expect(w.store.verdicts.get('express@4->5.1')).toMatchObject({ status: 'ready', label: 'breaking' })
+  })
+
+  it('twice is stored as failed, with the "cut off" reason', async () => {
+    const w = world({ ...express, respond: () => FAKE_CUT_OFF })
+
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls).toHaveLength(2)
+    expect(w.store.aiCalls.get(utcDay(w.clock.now()))).toBe(2)
+    expect(w.store.verdicts.get('express@4->5.1')).toMatchObject({ status: 'failed', failureReason: CUT_OFF_ERROR })
+  })
+
+  it('a failure that was not a cut-off is retried with the same request', async () => {
+    const w = world({ ...express, respond: () => 'not json at all' })
+
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls.map((c) => c.maxChanges)).toEqual([
+      VERDICT_SHAPE.changesPerVerdict,
+      VERDICT_SHAPE.changesPerVerdict,
+    ])
+  })
+
+  it('the shorter retry is still checked against the daily ceiling', async () => {
+    const w = world({ ...express, respond: () => FAKE_CUT_OFF })
+    const day = utcDay(w.clock.now())
+    w.store.aiCalls.set(day, LIMITS.aiCallsPerDay - 1)
+
+    await runScan(w.services, startScan(PROJECT))
+
+    expect(w.judge.calls).toHaveLength(1)
+    expect(w.store.aiCalls.get(day)).toBe(LIMITS.aiCallsPerDay)
+    expect(w.store.verdicts.size).toBe(0)
+    expect(dep(project(w.store).dependencies, 'express').deferredBy).toBe('daily-ceiling')
   })
 })
 

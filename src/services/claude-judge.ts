@@ -21,7 +21,7 @@
 import { generateText } from 'ai'
 import { createDeepSpaceAI, type DeepSpaceAIEnv } from 'deepspace/worker'
 import { JUDGE, SCAN_PACING } from '../config'
-import { buildVerdictPrompt, validateVerdictResponse, type VerdictPromptInput } from '../core/verdict'
+import { buildVerdictPrompt, readJudgeAnswer, type VerdictPromptInput } from '../core/verdict'
 import type { Judge, JudgeResult } from './types'
 
 export class ClaudeJudge implements Judge {
@@ -46,7 +46,8 @@ export class ClaudeJudge implements Judge {
         maxRetries: 0,
         abortSignal: AbortSignal.timeout(SCAN_PACING.judgeTimeoutMs),
       })
-      return validateVerdictResponse(result.text)
+      // finishReason 'length' means the answer hit maxOutputTokens and is incomplete.
+      return readJudgeAnswer({ text: result.text, finishReason: result.finishReason })
     } catch (error) {
       return { ok: false, error: `the AI call failed: ${error instanceof Error ? error.message : String(error)}` }
     }
