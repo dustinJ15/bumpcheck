@@ -158,7 +158,8 @@ with the writeup drawn from `WRITEUP.md`. The writeup states only what is true, 
 what was not verified. A live coding session follows if the submission moves forward. Dustin, 2026-11-24: "submit when done. I wont be back. we
 must sumbit before the cutoff time". So the supervisor submits without further confirmation,
 and must submit before 2026-11-25 23:59 Eastern even if the stretch or polish is unfinished:
-a deployed core with an honest writeup beats a late submission.
+a deployed core with an honest writeup beats a late submission. Dustin, 2026-11-24: "i give you authority to do whatever
+is needed" to get the project deployed and submitted.
 
 ## Ticket 08: stop here
 
