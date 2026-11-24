@@ -148,6 +148,15 @@ those for the core (tickets 01 to 08). Still never: `npx deepspace push`, readin
 secrets, any paid call other than the live checks and what the live-site check itself costs.
 Workers' rules are unchanged: workers never deploy, push, or run the live check.
 
+## Submission (Dustin, 2026-11-24: "once everything is done, make sure to use claude in chrome to submit the project")
+
+Where and what, from the DeepSpace Careers email of 2026-11-21: on the task page
+https://careers.deep.space/task, post the deployed app URL, the repository
+(https://github.com/dustinJ15/bumpcheck, public, default branch `main`) and a short writeup.
+The supervisor submits it through Claude in Chrome once the core is deployed and verified,
+with the writeup drawn from `WRITEUP.md`. The writeup states only what is true, including
+what was not verified. A live coding session follows if the submission moves forward.
+
 ## Ticket 08: stop here
 
 Ticket 08 has no worker. Do its step 1 (gate on a clean tree at the commit to be deployed, paste the output) and step 2
