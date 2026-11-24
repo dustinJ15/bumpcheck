@@ -137,6 +137,16 @@ If a live check fails, do not rerun it in a loop. Read the error, record what wa
 either have a worker fix the real implementation against the fakes or ask Dustin. Never run
 it at any other time.
 
+## Authority widened by Dustin (2026-11-24)
+
+Dustin said he cannot finish the human steps himself: "whatever you can do, do it", in answer
+to a question that listed the live check, deploying with `npx deepspace deploy`, the live-site
+check in ticket 08, pushing `ralph/bumpcheck` to GitHub and merging it to `main`, and reading
+his inbox through the Gmail connector to confirm the test email. The supervisor may now do
+those for the core (tickets 01 to 08). Still never: `npx deepspace push`, reading or changing
+secrets, any paid call other than the live checks and what the live-site check itself costs.
+Workers' rules are unchanged: workers never deploy, push, or run the live check.
+
 ## Ticket 08: stop here
 
 Ticket 08 has no worker. Do its step 1 (gate on a clean tree at the commit to be deployed, paste the output) and step 2
